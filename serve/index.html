@@ -714,41 +714,38 @@ function stopLogLive() {
 // ── Artifacts ──
 function renderArtifacts(artifacts) {
   const section = document.getElementById('downloads-section');
+  const proj = projects.find(p => p.id === selectedId);
+  const data = statusData;
 
-  // No watchArtifacts configured → fall back to basic download from build-status
-  if (!artifacts || artifacts.length === 0) {
-    const proj = projects.find(p => p.id === selectedId);
-    const data = statusData;
-    if (proj && data && data.status === 'ready' && proj.apkFile) {
-      const size = data.apkSize ? ` <span class="artifact-size">${formatSize(data.apkSize)}</span>` : '';
-      section.innerHTML =
-        `<div class="artifacts-row"><div class="artifact-item">` +
-        `<a class="btn-artifact" href="${esc(selectedId)}/${esc(proj.apkFile)}">⬇ Download APK${size}</a>` +
-        `</div></div>`;
-    } else {
-      section.innerHTML = '';
+  let items = [];
+
+  // Always show the serve_app-built download when status is ready
+  if (proj && data && data.status === 'ready' && proj.apkFile) {
+    const size = data.apkSize ? ` <span class="artifact-size">${formatSize(data.apkSize)}</span>` : '';
+    items.push(
+      `<div class="artifact-item">` +
+      `<a class="btn-artifact" href="${esc(selectedId)}/${esc(proj.apkFile)}">⬇ Download APK${size}</a>` +
+      `</div>`
+    );
+  }
+
+  // Additionally show local builds that are newer than the last serve_app build
+  if (artifacts && artifacts.length > 0) {
+    const newer = artifacts.filter(a => a.available && a.newer);
+    for (const a of newer) {
+      const isDebug = a.label.toLowerCase().includes('debug');
+      const cls     = 'btn-artifact' + (isDebug ? ' btn-artifact-debug' : '');
+      const size    = a.size ? `<span class="artifact-size">${formatSize(a.size)}</span>` : '';
+      const time    = a.mtime ? `<div class="artifact-time">${relativeTime(a.mtime)}</div>` : '';
+      items.push(
+        `<div class="artifact-item">` +
+        `<a class="${cls}" href="${esc(selectedId)}/${esc(a.file)}">⬇ ${esc(a.label)} ${size}<span class="badge-local">↑ local</span></a>` +
+        `${time}</div>`
+      );
     }
-    return;
   }
 
-  const available = artifacts.filter(a => a.available);
-  if (available.length === 0) {
-    section.innerHTML = '';
-    return;
-  }
-
-  const items = available.map(a => {
-    const isDebug  = a.label.toLowerCase().includes('debug');
-    const cls      = 'btn-artifact' + (isDebug ? ' btn-artifact-debug' : '');
-    const size     = a.size ? `<span class="artifact-size">${formatSize(a.size)}</span>` : '';
-    const badge    = a.newer ? ' <span class="badge-local">↑ local</span>' : '';
-    const time     = a.mtime ? `<div class="artifact-time">${relativeTime(a.mtime)}</div>` : '';
-    return `<div class="artifact-item">` +
-      `<a class="${cls}" href="${esc(selectedId)}/${esc(a.file)}">⬇ ${esc(a.label)} ${size}${badge}</a>` +
-      `${time}</div>`;
-  }).join('');
-
-  section.innerHTML = `<div class="artifacts-row">${items}</div>`;
+  section.innerHTML = items.length > 0 ? `<div class="artifacts-row">${items.join('')}</div>` : '';
 }
 
 async function fetchArtifacts() {
