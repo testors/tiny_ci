@@ -178,6 +178,24 @@
     border-radius: 8px;
     letter-spacing: 0.04em;
   }
+  .badge-stable {
+    font-size: 10px;
+    font-weight: 700;
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 8px;
+    letter-spacing: 0.04em;
+  }
+  .badge-latest {
+    font-size: 10px;
+    font-weight: 700;
+    background: #e06c00;
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 8px;
+    letter-spacing: 0.04em;
+  }
 
   /* Build button */
   #btn-build {
@@ -719,17 +737,17 @@ function renderArtifacts(artifacts) {
 
   let items = [];
 
-  // Always show the serve_app-built download when status is ready
+  // Always show the serve_app-built (Stable) download when status is ready
   if (proj && data && data.status === 'ready' && proj.apkFile) {
     const size = data.apkSize ? ` <span class="artifact-size">${formatSize(data.apkSize)}</span>` : '';
     items.push(
       `<div class="artifact-item">` +
-      `<a class="btn-artifact" href="${esc(selectedId)}/${esc(proj.apkFile)}">⬇ Download APK${size}</a>` +
+      `<a class="btn-artifact" href="${esc(selectedId)}/${esc(proj.apkFile)}">⬇ Download APK${size} <span class="badge-stable">Stable</span></a>` +
       `</div>`
     );
   }
 
-  // Additionally show local builds from watchArtifacts
+  // Additionally show local builds from watchArtifacts (Latest)
   // - same file as apkFile (e.g. Debug that serve_app also builds): only if newer=true
   // - different file (e.g. Release that serve_app never builds): show whenever available
   if (artifacts && artifacts.length > 0) {
@@ -740,11 +758,10 @@ function renderArtifacts(artifacts) {
       const isDebug = a.label.toLowerCase().includes('debug');
       const cls     = 'btn-artifact' + (isDebug ? ' btn-artifact-debug' : '');
       const size    = a.size ? `<span class="artifact-size">${formatSize(a.size)}</span>` : '';
-      const badge   = a.newer ? ' <span class="badge-local">↑ local</span>' : '';
       const time    = a.mtime ? `<div class="artifact-time">${relativeTime(a.mtime)}</div>` : '';
       items.push(
         `<div class="artifact-item">` +
-        `<a class="${cls}" href="${esc(selectedId)}/${esc(a.file)}">⬇ ${esc(a.label)} ${size}${badge}</a>` +
+        `<a class="${cls}" href="${esc(selectedId)}/${esc(a.file)}">⬇ ${esc(a.label)} ${size}<span class="badge-latest">Latest</span></a>` +
         `${time}</div>`
       );
     }
