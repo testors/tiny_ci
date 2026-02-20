@@ -176,20 +176,57 @@
     color: #58a6ff;
   }
 
-  /* Error message */
-  .error-box {
-    background: #1a0000;
-    border: 1px solid rgba(248,81,73,0.3);
-    border-radius: 8px;
-    padding: 12px 16px;
-    font-size: 12px;
-    color: #f85149;
-    font-family: monospace;
-    word-break: break-all;
+  /* Build log */
+  .log-block {
     margin-bottom: 24px;
-    max-height: 120px;
-    overflow-y: auto;
+    border: 1px solid #21262d;
+    border-radius: 10px;
+    overflow: hidden;
   }
+  .log-block.error { border-color: rgba(248,81,73,0.35); }
+
+  .log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 14px;
+    background: #161b22;
+    cursor: pointer;
+    user-select: none;
+  }
+  .log-block.error .log-header { background: #1a0a0a; }
+
+  .log-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .log-block.error .log-header-left { color: #f85149; }
+  .log-block:not(.error) .log-header-left { color: #8b949e; }
+
+  .log-chevron {
+    font-size: 10px;
+    color: #6e7681;
+    transition: transform 0.15s;
+  }
+  .log-chevron.open { transform: rotate(180deg); }
+
+  .log-body {
+    background: #0d1117;
+    padding: 12px 14px;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: #c9d1d9;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 380px;
+    overflow-y: auto;
+    border-top: 1px solid #21262d;
+  }
+  .log-block.error .log-body { color: #f0a0a0; }
 
   /* Build history */
   .section-title {
@@ -329,7 +366,17 @@
       <a id="btn-download" href="#" style="display:none">⬇ Download APK</a>
     </div>
     <div id="info-section" class="info-grid"></div>
-    <div id="error-section" class="error-box" style="display:none"></div>
+    <div id="log-section" style="display:none">
+      <div id="log-block" class="log-block error">
+        <div class="log-header" onclick="toggleLog()">
+          <div class="log-header-left">
+            <span id="log-label">Build Output</span>
+          </div>
+          <span id="log-chevron" class="log-chevron open">▼</span>
+        </div>
+        <div id="log-body" class="log-body"></div>
+      </div>
+    </div>
     <div class="section-title">Build History</div>
     <div id="history-section" class="history-list" style="display:none"></div>
   </div>
@@ -458,13 +505,19 @@ function renderDetail() {
     infoEl.style.display = 'none';
   }
 
-  // Error box
-  const errEl = document.getElementById('error-section');
-  if (status === 'failed' && data && data.error) {
-    errEl.textContent = data.error;
-    errEl.style.display = 'block';
+  // Log panel: show on failure (expanded), hide on other states
+  const logSection = document.getElementById('log-section');
+  const logBlock   = document.getElementById('log-block');
+  const logLabel   = document.getElementById('log-label');
+  const logChevron = document.getElementById('log-chevron');
+  if (status === 'failed') {
+    logSection.style.display = 'block';
+    logBlock.className = 'log-block error';
+    logLabel.textContent = 'Build Output';
+    logChevron.className = 'log-chevron open';
+    document.getElementById('log-body').style.display = 'block';
   } else {
-    errEl.style.display = 'none';
+    logSection.style.display = 'none';
   }
 
   // History
@@ -517,6 +570,7 @@ function selectProject(id) {
   renderDetail();
   fetchStatus();
   fetchHistory();
+  fetchLog();
 }
 
 // ── Polling ──
@@ -556,8 +610,11 @@ async function fetchStatus() {
   try {
     const res = await fetch(`${selectedId}/build-status.json?t=` + Date.now());
     if (!res.ok) return;
+    const prev = statusData ? statusData.status : null;
     statusData = await res.json();
     renderDetail();
+    // Fetch log when transitioning into failed, or on initial load
+    if (statusData.status === 'failed' && prev !== 'failed') fetchLog();
   } catch (e) {}
 }
 
@@ -569,6 +626,28 @@ async function fetchHistory() {
     historyData = await res.json();
     renderHistory();
   } catch (e) {}
+}
+
+async function fetchLog() {
+  if (!selectedId || !statusData || statusData.status !== 'failed') return;
+  try {
+    const res = await fetch(`${selectedId}/build.log?t=` + Date.now());
+    if (!res.ok) return;
+    const text = await res.text();
+    const body = document.getElementById('log-body');
+    body.textContent = text;
+    // Scroll to bottom (most recent output)
+    body.scrollTop = body.scrollHeight;
+  } catch (e) {}
+}
+
+function toggleLog() {
+  const body     = document.getElementById('log-body');
+  const chevron  = document.getElementById('log-chevron');
+  const isOpen   = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  chevron.className  = 'log-chevron' + (isOpen ? '' : ' open');
+  if (!isOpen) body.scrollTop = body.scrollHeight;
 }
 
 // ── Bootstrap ──

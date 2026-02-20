@@ -283,12 +283,15 @@ if [ $BUILD_EXIT -eq 0 ] && [ -f "$ARTIFACT_PATH" ]; then
     echo "[serve_app] Build SUCCESS - $APK_NAME ready"
     BUILD_RESULT="ready"
 else
-    ERROR_MSG=$(tail -5 "$LOG_FILE" | tr '\n' ' ' | cut -c1-200)
+    ERROR_MSG=$(tail -20 "$LOG_FILE" | tr '\n' '\x0a' | cut -c1-500)
     write_status "failed" "$ERROR_MSG"
     update_projects_json "failed"
     echo "[serve_app] Build FAILED - check $LOG_FILE"
     BUILD_RESULT="failed"
 fi
+
+# --- Copy build log tail to serve dir (accessible via HTTP) ---
+tail -150 "$LOG_FILE" > "$SERVE_DIR/build.log"
 
 # --- Append to build history (keep last 20) ---
 HISTORY_ENTRY=$(python3 -c "
