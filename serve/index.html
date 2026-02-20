@@ -729,17 +729,22 @@ function renderArtifacts(artifacts) {
     );
   }
 
-  // Additionally show local builds that are newer than the last serve_app build
+  // Additionally show local builds from watchArtifacts
+  // - same file as apkFile (e.g. Debug that serve_app also builds): only if newer=true
+  // - different file (e.g. Release that serve_app never builds): show whenever available
   if (artifacts && artifacts.length > 0) {
-    const newer = artifacts.filter(a => a.available && a.newer);
-    for (const a of newer) {
+    for (const a of artifacts.filter(x => x.available)) {
+      const isSameAsMain = proj && a.file === proj.apkFile;
+      if (isSameAsMain && !a.newer) continue;
+
       const isDebug = a.label.toLowerCase().includes('debug');
       const cls     = 'btn-artifact' + (isDebug ? ' btn-artifact-debug' : '');
       const size    = a.size ? `<span class="artifact-size">${formatSize(a.size)}</span>` : '';
+      const badge   = a.newer ? ' <span class="badge-local">↑ local</span>' : '';
       const time    = a.mtime ? `<div class="artifact-time">${relativeTime(a.mtime)}</div>` : '';
       items.push(
         `<div class="artifact-item">` +
-        `<a class="${cls}" href="${esc(selectedId)}/${esc(a.file)}">⬇ ${esc(a.label)} ${size}<span class="badge-local">↑ local</span></a>` +
+        `<a class="${cls}" href="${esc(selectedId)}/${esc(a.file)}">⬇ ${esc(a.label)} ${size}${badge}</a>` +
         `${time}</div>`
       );
     }
