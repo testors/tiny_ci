@@ -1,0 +1,8 @@
+# Runtime state (auto-generated, machine-specific)
+projects/
+serve/projects.json
+serve/*/
+logs/
+
+# macOS
+.DS_Store

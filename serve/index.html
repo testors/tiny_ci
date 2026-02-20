@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>serve_app</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f1117;
+    color: #e1e4e8;
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    background: #161b22;
+    border-right: 1px solid #21262d;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  #sidebar-header {
+    padding: 18px 16px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8b949e;
+    border-bottom: 1px solid #21262d;
+  }
+  .project-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #21262d;
+    transition: background 0.15s;
+    text-decoration: none;
+    color: inherit;
+  }
+  .project-item:hover { background: #1c2128; }
+  .project-item.active { background: #1f2d3d; border-left: 3px solid #58a6ff; padding-left: 13px; }
+  .project-item-info { flex: 1; min-width: 0; }
+  .project-item-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #c9d1d9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .project-item-meta {
+    font-size: 11px;
+    color: #6e7681;
+    margin-top: 2px;
+  }
+  .project-item-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-ready    { background: #3fb950; }
+  .dot-building { background: #f0c040; }
+  .dot-failed   { background: #f85149; }
+  .dot-unknown  { background: #484f58; }
+
+  /* ── Main panel ── */
+  #main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px;
+    min-width: 0;
+  }
+
+  #empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #6e7681;
+    font-size: 15px;
+    text-align: center;
+  }
+
+  /* ── Project detail ── */
+  #detail { display: none; }
+  #detail-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  #detail-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #e1e4e8;
+  }
+  #detail-subtitle {
+    font-size: 13px;
+    color: #8b949e;
+    margin-top: 2px;
+  }
+
+  /* Status badge */
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .badge-ready    { background: #0f2d1a; color: #3fb950; }
+  .badge-building { background: #2d2200; color: #f0c040; }
+  .badge-failed   { background: #2d0000; color: #f85149; }
+  .badge-unknown  { background: #21262d; color: #8b949e; }
+
+  /* Spinner for building */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-sm {
+    width: 10px;
+    height: 10px;
+    border: 2px solid #4a3900;
+    border-top-color: #f0c040;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+  }
+
+  /* Download button */
+  #btn-download {
+    display: inline-block;
+    background: #238636;
+    color: #fff;
+    text-decoration: none;
+    padding: 10px 22px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background 0.15s;
+    margin-left: 8px;
+  }
+  #btn-download:hover { background: #2ea043; }
+
+  /* Info grid */
+  .info-grid {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 8px 16px;
+    font-size: 13px;
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 24px;
+  }
+  .info-grid .label {
+    font-weight: 600;
+    color: #8b949e;
+  }
+  .info-grid .value {
+    color: #c9d1d9;
+    word-break: break-word;
+  }
+  .info-grid .mono {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    color: #58a6ff;
+  }
+
+  /* Error message */
+  .error-box {
+    background: #1a0000;
+    border: 1px solid rgba(248,81,73,0.3);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: #f85149;
+    font-family: monospace;
+    word-break: break-all;
+    margin-bottom: 24px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+
+  /* Build history */
+  .section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 12px;
+  }
+  .history-list {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .history-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid #21262d;
+    font-size: 12px;
+  }
+  .history-item:last-child { border-bottom: none; }
+  .history-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .history-commit {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    color: #58a6ff;
+    flex-shrink: 0;
+    width: 56px;
+  }
+  .history-msg {
+    flex: 1;
+    color: #c9d1d9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .history-branch {
+    color: #8b949e;
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+  .history-time {
+    color: #6e7681;
+    flex-shrink: 0;
+    width: 56px;
+    text-align: right;
+  }
+
+  /* No projects empty state */
+  .empty-sidebar {
+    padding: 20px 16px;
+    font-size: 12px;
+    color: #484f58;
+    line-height: 1.6;
+  }
+
+  /* ── Mobile: master-detail navigation ── */
+  #btn-back {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: #58a6ff;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 640px) {
+    body { overflow: auto; }
+
+    #sidebar {
+      width: 100%;
+      height: 100vh;
+      border-right: none;
+      border-bottom: 1px solid #21262d;
+    }
+
+    #main {
+      display: none;
+      width: 100%;
+      padding: 20px 16px;
+      min-height: 100vh;
+    }
+
+    /* list view: sidebar visible, detail hidden */
+    body.mobile-list #sidebar  { display: flex; }
+    body.mobile-list #main     { display: none; }
+
+    /* detail view: sidebar hidden, detail visible */
+    body.mobile-detail #sidebar { display: none; }
+    body.mobile-detail #main    { display: block; }
+
+    #btn-back { display: flex; }
+
+    #detail-header { flex-wrap: wrap; gap: 10px; }
+    #btn-download  { margin-left: 0; width: 100%; text-align: center; }
+
+    .history-branch { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav id="sidebar">
+  <div id="sidebar-header">Projects</div>
+  <div id="project-list">
+    <div class="empty-sidebar">No projects registered yet.</div>
+  </div>
+</nav>
+
+<main id="main">
+  <button id="btn-back" onclick="goBack()">&#8592; Projects</button>
+  <div id="empty-state">
+    <div>
+      <div style="font-size:32px;margin-bottom:12px;">📦</div>
+      <div>Select a project from the sidebar</div>
+    </div>
+  </div>
+  <div id="detail">
+    <div id="detail-header">
+      <div>
+        <div id="detail-title"></div>
+        <div id="detail-subtitle"></div>
+      </div>
+      <div id="status-badge" class="status-badge badge-unknown"></div>
+      <a id="btn-download" href="#" style="display:none">⬇ Download APK</a>
+    </div>
+    <div id="info-section" class="info-grid"></div>
+    <div id="error-section" class="error-box" style="display:none"></div>
+    <div class="section-title">Build History</div>
+    <div id="history-section" class="history-list" style="display:none"></div>
+  </div>
+</main>
+
+<script>
+// ── State ──
+let projects = [];
+let selectedId = null;
+let statusData = null;
+let historyData = [];
+
+// ── Utilities ──
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = String(s || '');
+  return d.innerHTML;
+}
+
+function relativeTime(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - new Date(ts).getTime();
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+  return new Date(ts).toLocaleDateString();
+}
+
+function formatTime(ts) {
+  if (!ts) return '-';
+  return new Date(ts).toLocaleString();
+}
+
+function formatSize(bytes) {
+  if (!bytes || bytes === 0) return '';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function dotClass(status) {
+  return { ready: 'dot-ready', building: 'dot-building', failed: 'dot-failed' }[status] || 'dot-unknown';
+}
+
+// ── Sidebar rendering ──
+function renderSidebar() {
+  const listEl = document.getElementById('project-list');
+  if (!projects.length) {
+    listEl.innerHTML = '<div class="empty-sidebar">No projects registered yet.</div>';
+    return;
+  }
+  listEl.innerHTML = projects.map(p => {
+    const active = p.id === selectedId ? ' active' : '';
+    const dot = dotClass(p.status);
+    const time = relativeTime(p.lastBuildTime);
+    return `<a class="project-item${active}" href="#${esc(p.id)}" onclick="selectProject('${esc(p.id)}');return false;">
+      <div class="project-item-info">
+        <div class="project-item-name">${esc(p.name)}</div>
+        <div class="project-item-meta">${time || 'no builds'}</div>
+      </div>
+      <div class="project-item-dot ${dot}"></div>
+    </a>`;
+  }).join('');
+}
+
+// ── Detail panel rendering ──
+function renderDetail() {
+  if (!selectedId) {
+    document.getElementById('empty-state').style.display = 'flex';
+    document.getElementById('detail').style.display = 'none';
+    return;
+  }
+
+  const proj = projects.find(p => p.id === selectedId);
+  if (!proj) return;
+
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('detail').style.display = 'block';
+
+  document.getElementById('detail-title').textContent = proj.name;
+
+  const data = statusData;
+  const status = data ? data.status : 'unknown';
+
+  // Status badge
+  const badgeEl = document.getElementById('status-badge');
+  const badgeMap = {
+    ready:    ['badge-ready',    '<span class="dot-ready" style="width:8px;height:8px;border-radius:50%;background:#3fb950;display:inline-block"></span> Ready'],
+    building: ['badge-building', '<span class="spinner-sm"></span> Building…'],
+    failed:   ['badge-failed',   '<span style="color:#f85149">✕</span> Failed'],
+    unknown:  ['badge-unknown',  '— Unknown'],
+  };
+  const [cls, html] = badgeMap[status] || badgeMap.unknown;
+  badgeEl.className = 'status-badge ' + cls;
+  badgeEl.innerHTML = html;
+
+  // Download button
+  const dlBtn = document.getElementById('btn-download');
+  if (status === 'ready' && proj.apkFile) {
+    const size = data && data.apkSize ? ' (' + formatSize(data.apkSize) + ')' : '';
+    dlBtn.href = `${selectedId}/${proj.apkFile}`;
+    dlBtn.textContent = `⬇ Download APK${size}`;
+    dlBtn.style.display = 'inline-block';
+  } else {
+    dlBtn.style.display = 'none';
+  }
+
+  // Detail subtitle: branch@commit
+  if (data && data.branch && data.commit) {
+    document.getElementById('detail-subtitle').textContent = `${data.branch} @ ${data.commit}`;
+  } else {
+    document.getElementById('detail-subtitle').textContent = '';
+  }
+
+  // Info grid
+  let info = '';
+  if (data) {
+    if (data.branch)    info += `<span class="label">Branch</span><span class="value">${esc(data.branch)}</span>`;
+    if (data.commit)    info += `<span class="label">Commit</span><span class="value mono">${esc(data.commit)}</span>`;
+    if (data.message)   info += `<span class="label">Message</span><span class="value">${esc(data.message)}</span>`;
+    if (data.timestamp) info += `<span class="label">Built</span><span class="value">${formatTime(data.timestamp)}</span>`;
+  }
+  const infoEl = document.getElementById('info-section');
+  if (info) {
+    infoEl.innerHTML = info;
+    infoEl.style.display = 'grid';
+  } else {
+    infoEl.style.display = 'none';
+  }
+
+  // Error box
+  const errEl = document.getElementById('error-section');
+  if (status === 'failed' && data && data.error) {
+    errEl.textContent = data.error;
+    errEl.style.display = 'block';
+  } else {
+    errEl.style.display = 'none';
+  }
+
+  // History
+  renderHistory();
+}
+
+function renderHistory() {
+  const el = document.getElementById('history-section');
+  if (!historyData || historyData.length === 0) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  el.innerHTML = historyData.map(item => {
+    const dot = dotClass(item.status);
+    return `<div class="history-item">
+      <span class="history-dot ${dot}"></span>
+      <span class="history-commit">${esc(item.commit || '')}</span>
+      <span class="history-msg">${esc(item.message || '')}</span>
+      <span class="history-branch">${esc(item.branch || '')}</span>
+      <span class="history-time">${relativeTime(item.timestamp)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Mobile navigation ──
+function isMobile() { return window.innerWidth <= 640; }
+
+function goBack() {
+  document.body.className = 'mobile-list';
+  window.location.hash = '';
+}
+
+function setMobileView(hasSelection) {
+  if (isMobile()) {
+    document.body.className = hasSelection ? 'mobile-detail' : 'mobile-list';
+  } else {
+    document.body.className = '';
+  }
+}
+
+// ── Project selection ──
+function selectProject(id) {
+  selectedId = id;
+  statusData = null;
+  historyData = [];
+  window.location.hash = id;
+  setMobileView(true);
+  renderSidebar();
+  renderDetail();
+  fetchStatus();
+  fetchHistory();
+}
+
+// ── Polling ──
+async function fetchProjects() {
+  try {
+    const res = await fetch('projects.json?t=' + Date.now());
+    if (!res.ok) return;
+    const data = await res.json();
+    // Sort by lastBuildTime descending, unknown last
+    data.sort((a, b) => {
+      if (!a.lastBuildTime && !b.lastBuildTime) return 0;
+      if (!a.lastBuildTime) return 1;
+      if (!b.lastBuildTime) return -1;
+      return new Date(b.lastBuildTime) - new Date(a.lastBuildTime);
+    });
+    projects = data;
+
+    // Auto-select first project on initial load
+    if (!selectedId && projects.length > 0) {
+      const hashId = window.location.hash.slice(1);
+      // On mobile, don't auto-select — show the list first
+      if (isMobile() && !hashId) {
+        setMobileView(false);
+        renderSidebar();
+      } else {
+        const target = projects.find(p => p.id === hashId) || projects[0];
+        selectProject(target.id);
+      }
+    } else {
+      renderSidebar();
+    }
+  } catch (e) {}
+}
+
+async function fetchStatus() {
+  if (!selectedId) return;
+  try {
+    const res = await fetch(`${selectedId}/build-status.json?t=` + Date.now());
+    if (!res.ok) return;
+    statusData = await res.json();
+    renderDetail();
+  } catch (e) {}
+}
+
+async function fetchHistory() {
+  if (!selectedId) return;
+  try {
+    const res = await fetch(`${selectedId}/build-history.json?t=` + Date.now());
+    if (!res.ok) return;
+    historyData = await res.json();
+    renderHistory();
+  } catch (e) {}
+}
+
+// ── Bootstrap ──
+fetchProjects();
+setInterval(fetchProjects, 15000);
+setInterval(fetchStatus, 3000);
+setInterval(fetchHistory, 10000);
+
+// Handle browser back/forward and mobile back gesture
+window.addEventListener('hashchange', () => {
+  const id = window.location.hash.slice(1);
+  if (!id) {
+    setMobileView(false);
+    return;
+  }
+  if (id !== selectedId) {
+    const proj = projects.find(p => p.id === id);
+    if (proj) selectProject(id);
+  }
+});
+
+// Reapply layout class when resizing between mobile/desktop
+window.addEventListener('resize', () => setMobileView(!!selectedId));
+</script>
+</body>
+</html>
