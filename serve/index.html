@@ -136,26 +136,50 @@
     display: inline-block;
   }
 
-  /* Action buttons */
-  .btn-row {
+  /* Downloads section */
+  #downloads-section {
+    margin-bottom: 24px;
+  }
+  .artifacts-row {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    gap: 10px;
     flex-wrap: wrap;
   }
-  #btn-download {
-    display: inline-block;
+  .artifact-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .btn-artifact {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     background: #238636;
     color: #fff;
     text-decoration: none;
-    padding: 10px 22px;
+    padding: 10px 18px;
     border-radius: 8px;
     font-size: 14px;
     font-weight: 600;
     transition: background 0.15s;
+    white-space: nowrap;
   }
-  #btn-download:hover { background: #2ea043; }
+  .btn-artifact:hover { background: #2ea043; }
+  .btn-artifact-debug { background: #1f6feb; }
+  .btn-artifact-debug:hover { background: #388bfd; }
+  .artifact-size { font-size: 12px; opacity: 0.75; font-weight: 400; }
+  .artifact-time { font-size: 11px; color: #6e7681; padding-left: 2px; }
+  .badge-local {
+    font-size: 10px;
+    font-weight: 700;
+    background: #f0c040;
+    color: #1a1200;
+    padding: 2px 6px;
+    border-radius: 8px;
+    letter-spacing: 0.04em;
+  }
 
+  /* Build button */
   #btn-build {
     display: inline-flex;
     align-items: center;
@@ -355,8 +379,8 @@
     #btn-back { display: flex; }
 
     #detail-header { flex-wrap: wrap; gap: 10px; }
-    .btn-row { width: 100%; }
-    #btn-download, #btn-build { flex: 1; text-align: center; justify-content: center; }
+    .artifacts-row { flex-direction: column; }
+    .btn-artifact { justify-content: center; }
 
     .history-branch { display: none; }
   }
@@ -386,12 +410,10 @@
         <div id="detail-subtitle"></div>
       </div>
       <div id="status-badge" class="status-badge badge-unknown"></div>
-      <div class="btn-row">
-        <a id="btn-download" href="#" style="display:none">⬇ Download APK</a>
-        <button id="btn-build" onclick="triggerBuild()">▶ Build</button>
-      </div>
+      <button id="btn-build" onclick="triggerBuild()">▶ Build</button>
     </div>
     <div id="info-section" class="info-grid"></div>
+    <div id="downloads-section"></div>
     <div id="log-section" style="display:none">
       <div id="log-block" class="log-block error">
         <div class="log-header" onclick="toggleLog()">
@@ -497,17 +519,6 @@ function renderDetail() {
   badgeEl.className = 'status-badge ' + cls;
   badgeEl.innerHTML = html;
 
-  // Download button
-  const dlBtn = document.getElementById('btn-download');
-  if (status === 'ready' && proj.apkFile) {
-    const size = data && data.apkSize ? ' (' + formatSize(data.apkSize) + ')' : '';
-    dlBtn.href = `${selectedId}/${proj.apkFile}`;
-    dlBtn.textContent = `⬇ Download APK${size}`;
-    dlBtn.style.display = 'inline-block';
-  } else {
-    dlBtn.style.display = 'none';
-  }
-
   // Build button: disabled while building
   const buildBtn = document.getElementById('btn-build');
   buildBtn.disabled = (status === 'building');
@@ -611,6 +622,7 @@ function selectProject(id) {
   fetchStatus();
   fetchHistory();
   fetchLog();
+  fetchArtifacts();
 }
 
 // ── Polling ──
@@ -699,6 +711,57 @@ function stopLogLive() {
   if (logLiveInterval) { clearInterval(logLiveInterval); logLiveInterval = null; }
 }
 
+// ── Artifacts ──
+function renderArtifacts(artifacts) {
+  const section = document.getElementById('downloads-section');
+
+  // No watchArtifacts configured → fall back to basic download from build-status
+  if (!artifacts || artifacts.length === 0) {
+    const proj = projects.find(p => p.id === selectedId);
+    const data = statusData;
+    if (proj && data && data.status === 'ready' && proj.apkFile) {
+      const size = data.apkSize ? ` <span class="artifact-size">${formatSize(data.apkSize)}</span>` : '';
+      section.innerHTML =
+        `<div class="artifacts-row"><div class="artifact-item">` +
+        `<a class="btn-artifact" href="${esc(selectedId)}/${esc(proj.apkFile)}">⬇ Download APK${size}</a>` +
+        `</div></div>`;
+    } else {
+      section.innerHTML = '';
+    }
+    return;
+  }
+
+  const available = artifacts.filter(a => a.available);
+  if (available.length === 0) {
+    section.innerHTML = '';
+    return;
+  }
+
+  const items = available.map(a => {
+    const isDebug  = a.label.toLowerCase().includes('debug');
+    const cls      = 'btn-artifact' + (isDebug ? ' btn-artifact-debug' : '');
+    const size     = a.size ? `<span class="artifact-size">${formatSize(a.size)}</span>` : '';
+    const badge    = a.newer ? ' <span class="badge-local">↑ local</span>' : '';
+    const time     = a.mtime ? `<div class="artifact-time">${relativeTime(a.mtime)}</div>` : '';
+    return `<div class="artifact-item">` +
+      `<a class="${cls}" href="${esc(selectedId)}/${esc(a.file)}">⬇ ${esc(a.label)} ${size}${badge}</a>` +
+      `${time}</div>`;
+  }).join('');
+
+  section.innerHTML = `<div class="artifacts-row">${items}</div>`;
+}
+
+async function fetchArtifacts() {
+  if (!selectedId) return;
+  try {
+    const res = await fetch(`/api/scan/${selectedId}?t=` + Date.now());
+    if (!res.ok) return;
+    renderArtifacts(await res.json());
+  } catch (e) {
+    renderArtifacts(null);
+  }
+}
+
 async function triggerBuild() {
   if (!selectedId) return;
   const btn = document.getElementById('btn-build');
@@ -734,6 +797,7 @@ fetchProjects();
 setInterval(fetchProjects, 15000);
 setInterval(fetchStatus, 3000);
 setInterval(fetchHistory, 10000);
+setInterval(fetchArtifacts, 30000);
 
 // Handle browser back/forward and mobile back gesture
 window.addEventListener('hashchange', () => {

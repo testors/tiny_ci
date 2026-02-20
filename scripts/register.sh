@@ -37,6 +37,11 @@ if 'buildWorkingDir' in config and not config['buildWorkingDir'].startswith('/')
 if 'artifactPath' in config and not config['artifactPath'].startswith('/'):
     import os
     config['artifactPath'] = os.path.join('$PROJECT_ROOT', config['artifactPath'])
+# Resolve relative paths in watchArtifacts
+for a in config.get('watchArtifacts', []):
+    if 'path' in a and not a['path'].startswith('/'):
+        import os
+        a['path'] = os.path.join('$PROJECT_ROOT', a['path'])
 with open('$SERVE_APP_DIR/projects/${PROJECT_ID}.json', 'w') as f:
     json.dump(config, f, ensure_ascii=False, indent=2)
 print('[serve_app] Config saved to projects/${PROJECT_ID}.json')
@@ -114,7 +119,7 @@ else
         GIT_DIR="$PROJECT_ROOT/$GIT_DIR"
     fi
     HOOK_FILE="$GIT_DIR/hooks/post-commit"
-    HOOK_MARKER="serve_app/scripts/build.sh ${PROJECT_ID}"
+    HOOK_MARKER="build.sh\" ${PROJECT_ID}"
 
     if [ -f "$HOOK_FILE" ] && grep -qF "$HOOK_MARKER" "$HOOK_FILE"; then
         echo "[serve_app] Git hook already installed for $PROJECT_ID"
