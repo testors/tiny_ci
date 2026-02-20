@@ -536,19 +536,26 @@ function renderDetail() {
     infoEl.style.display = 'none';
   }
 
-  // Log panel: show on failure (expanded), hide on other states
+  // Log panel: always show, style and expand based on status
   const logSection = document.getElementById('log-section');
   const logBlock   = document.getElementById('log-block');
   const logLabel   = document.getElementById('log-label');
   const logChevron = document.getElementById('log-chevron');
+  const logBody    = document.getElementById('log-body');
+  logSection.style.display = 'block';
   if (status === 'failed') {
-    logSection.style.display = 'block';
     logBlock.className = 'log-block error';
-    logLabel.textContent = 'Build Output';
+    logBody.style.display = 'block';
     logChevron.className = 'log-chevron open';
-    document.getElementById('log-body').style.display = 'block';
+  } else if (status === 'building') {
+    logBlock.className = 'log-block';
+    logBody.style.display = 'block';
+    logChevron.className = 'log-chevron open';
   } else {
-    logSection.style.display = 'none';
+    // ready / unknown: collapsed by default
+    logBlock.className = 'log-block';
+    logBody.style.display = 'none';
+    logChevron.className = 'log-chevron';
   }
 
   // History
@@ -592,9 +599,11 @@ function setMobileView(hasSelection) {
 
 // ── Project selection ──
 function selectProject(id) {
+  stopLogLive();
   selectedId = id;
   statusData = null;
   historyData = [];
+  document.getElementById('log-body').textContent = '';
   window.location.hash = id;
   setMobileView(true);
   renderSidebar();
@@ -644,8 +653,14 @@ async function fetchStatus() {
     const prev = statusData ? statusData.status : null;
     statusData = await res.json();
     renderDetail();
-    // Fetch log when transitioning into failed, or on initial load
-    if (statusData.status === 'failed' && prev !== 'failed') fetchLog();
+    const cur = statusData.status;
+    if (cur === 'building') {
+      fetchLog();
+      startLogLive();
+    } else {
+      stopLogLive();
+      if (cur !== prev) fetchLog(); // refresh once on status change
+    }
   } catch (e) {}
 }
 
@@ -660,16 +675,28 @@ async function fetchHistory() {
 }
 
 async function fetchLog() {
-  if (!selectedId || !statusData || statusData.status !== 'failed') return;
+  if (!selectedId) return;
   try {
     const res = await fetch(`${selectedId}/build.log?t=` + Date.now());
     if (!res.ok) return;
     const text = await res.text();
     const body = document.getElementById('log-body');
+    if (body.style.display === 'none') return; // collapsed — don't update
+    const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
     body.textContent = text;
-    // Scroll to bottom (most recent output)
-    body.scrollTop = body.scrollHeight;
+    if (atBottom) body.scrollTop = body.scrollHeight;
   } catch (e) {}
+}
+
+let logLiveInterval = null;
+
+function startLogLive() {
+  if (logLiveInterval) return;
+  logLiveInterval = setInterval(fetchLog, 2000);
+}
+
+function stopLogLive() {
+  if (logLiveInterval) { clearInterval(logLiveInterval); logLiveInterval = null; }
 }
 
 async function triggerBuild() {

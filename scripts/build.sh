@@ -237,6 +237,11 @@ update_projects_json "building"
 echo "[serve_app] Building $PROJECT_NAME (${BRANCH}@${COMMIT_HASH})..."
 
 # --- Build ---
+# Write directly to serve/<id>/build.log so it's live-accessible via HTTP during build.
+# Archived to logs/<id>/build-<timestamp>.log after completion.
+BUILD_LOG_SERVE="$SERVE_DIR/build.log"
+> "$BUILD_LOG_SERVE"  # clear previous log
+
 BUILD_EXIT=0
 {
     echo "=== serve_app Build ==="
@@ -257,14 +262,14 @@ BUILD_EXIT=0
 
     echo ""
     echo "=== Build finished (exit=$BUILD_EXIT) ==="
-} > "$LOG_FILE" 2>&1 &
+} >> "$BUILD_LOG_SERVE" 2>&1 &
 BUILD_PID=$!
 
 # --- Watchdog: kill build if it exceeds timeout ---
 (
     sleep "$BUILD_TIMEOUT"
     if kill -0 "$BUILD_PID" 2>/dev/null; then
-        echo "[serve_app] Build timed out after ${BUILD_TIMEOUT}s, killing..." >&2
+        echo "[serve_app] Build timed out after ${BUILD_TIMEOUT}s, killing..." >> "$BUILD_LOG_SERVE"
         kill_tree "$BUILD_PID"
     fi
 ) &
@@ -273,6 +278,9 @@ WATCHDOG_PID=$!
 wait "$BUILD_PID" 2>/dev/null || BUILD_EXIT=$?
 kill "$WATCHDOG_PID" 2>/dev/null || true
 wait "$WATCHDOG_PID" 2>/dev/null || true
+
+# Archive full log with timestamp
+cp "$BUILD_LOG_SERVE" "$LOG_FILE"
 
 if [ $BUILD_EXIT -eq 0 ] && [ -f "$ARTIFACT_PATH" ]; then
     # Atomic copy: temp file + mv
@@ -283,15 +291,12 @@ if [ $BUILD_EXIT -eq 0 ] && [ -f "$ARTIFACT_PATH" ]; then
     echo "[serve_app] Build SUCCESS - $APK_NAME ready"
     BUILD_RESULT="ready"
 else
-    ERROR_MSG=$(tail -20 "$LOG_FILE" | tr '\n' '\x0a' | cut -c1-500)
+    ERROR_MSG=$(tail -20 "$BUILD_LOG_SERVE" | tr '\n' '\x0a' | cut -c1-500)
     write_status "failed" "$ERROR_MSG"
     update_projects_json "failed"
     echo "[serve_app] Build FAILED - check $LOG_FILE"
     BUILD_RESULT="failed"
 fi
-
-# --- Copy build log tail to serve dir (accessible via HTTP) ---
-tail -150 "$LOG_FILE" > "$SERVE_DIR/build.log"
 
 # --- Append to build history (keep last 20) ---
 HISTORY_ENTRY=$(python3 -c "
