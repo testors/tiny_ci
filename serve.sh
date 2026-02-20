@@ -21,5 +21,4 @@ echo "  Press Ctrl+C to stop."
 echo "======================================="
 echo ""
 
-cd "$SERVE_DIR"
-python3 -m http.server "$PORT" --bind 0.0.0.0
+python3 "$SCRIPT_DIR/server.py" "$PORT"

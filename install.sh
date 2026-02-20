@@ -17,6 +17,7 @@ mkdir -p "$SCRIPT_DIR/logs"
 chmod +x "$SCRIPT_DIR/scripts/build.sh"
 chmod +x "$SCRIPT_DIR/scripts/register.sh"
 chmod +x "$SCRIPT_DIR/serve.sh"
+chmod +x "$SCRIPT_DIR/server.py"
 
 # --- Initialize projects.json if not present ---
 PROJECTS_JSON="$SCRIPT_DIR/serve/projects.json"
@@ -40,14 +41,11 @@ cat > "$PLIST_FILE" <<PLIST
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>-m</string>
-        <string>http.server</string>
+        <string>${SCRIPT_DIR}/server.py</string>
         <string>8888</string>
-        <string>--bind</string>
-        <string>0.0.0.0</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>${SCRIPT_DIR}/serve</string>
+    <string>${SCRIPT_DIR}</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

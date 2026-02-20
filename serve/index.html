@@ -136,7 +136,13 @@
     display: inline-block;
   }
 
-  /* Download button */
+  /* Action buttons */
+  .btn-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
   #btn-download {
     display: inline-block;
     background: #238636;
@@ -147,9 +153,25 @@
     font-size: 14px;
     font-weight: 600;
     transition: background 0.15s;
-    margin-left: 8px;
   }
   #btn-download:hover { background: #2ea043; }
+
+  #btn-build {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    padding: 9px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  #btn-build:hover:not(:disabled) { background: #21262d; border-color: #8b949e; }
+  #btn-build:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Info grid */
   .info-grid {
@@ -333,7 +355,8 @@
     #btn-back { display: flex; }
 
     #detail-header { flex-wrap: wrap; gap: 10px; }
-    #btn-download  { margin-left: 0; width: 100%; text-align: center; }
+    .btn-row { width: 100%; }
+    #btn-download, #btn-build { flex: 1; text-align: center; justify-content: center; }
 
     .history-branch { display: none; }
   }
@@ -363,7 +386,10 @@
         <div id="detail-subtitle"></div>
       </div>
       <div id="status-badge" class="status-badge badge-unknown"></div>
-      <a id="btn-download" href="#" style="display:none">⬇ Download APK</a>
+      <div class="btn-row">
+        <a id="btn-download" href="#" style="display:none">⬇ Download APK</a>
+        <button id="btn-build" onclick="triggerBuild()">▶ Build</button>
+      </div>
     </div>
     <div id="info-section" class="info-grid"></div>
     <div id="log-section" style="display:none">
@@ -481,6 +507,11 @@ function renderDetail() {
   } else {
     dlBtn.style.display = 'none';
   }
+
+  // Build button: disabled while building
+  const buildBtn = document.getElementById('btn-build');
+  buildBtn.disabled = (status === 'building');
+  buildBtn.innerHTML = status === 'building' ? '<span class="spinner-sm"></span> Building…' : '▶ Build';
 
   // Detail subtitle: branch@commit
   if (data && data.branch && data.commit) {
@@ -639,6 +670,27 @@ async function fetchLog() {
     // Scroll to bottom (most recent output)
     body.scrollTop = body.scrollHeight;
   } catch (e) {}
+}
+
+async function triggerBuild() {
+  if (!selectedId) return;
+  const btn = document.getElementById('btn-build');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-sm"></span> Building…';
+  try {
+    const res = await fetch(`/api/build/${selectedId}`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('Build trigger failed: ' + (err.error || res.status));
+      btn.disabled = false;
+      btn.innerHTML = '▶ Build';
+    }
+    // Success: status polling will pick up the "building" state shortly
+  } catch (e) {
+    alert('Build trigger failed: ' + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '▶ Build';
+  }
 }
 
 function toggleLog() {
