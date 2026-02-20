@@ -222,13 +222,15 @@ handle_flutter_cache() {
     fi
 }
 
-# --- Run Flutter-specific pre-build steps if applicable ---
-IS_FLUTTER=false
-if echo "$BUILD_CMD" | grep -qi flutter; then
-    IS_FLUTTER=true
-    handle_flutter_quarantine
+# --- Pre-build: strip quarantine and clean caches ---
+# Android SDK + Gradle quarantine applies to any Gradle or Flutter build
+if echo "$BUILD_CMD" | grep -qiE 'gradle|flutter'; then
     handle_android_quarantine
     handle_gradle_quarantine
+fi
+# Flutter-specific steps
+if echo "$BUILD_CMD" | grep -qi flutter; then
+    handle_flutter_quarantine
     handle_flutter_cache
 fi
 
