@@ -19,7 +19,7 @@ PROJECT_NAME="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE'));
 BUILD_CMD="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d['buildCommand'])")"
 BUILD_DIR="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d.get('buildWorkingDir', '.'))")"
 ARTIFACT_PATH="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d['artifactPath'])")"
-APK_NAME="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d['apkName'])")"
+ARTIFACT_NAME="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d.get('artifactName') or d['apkName'])")"
 PROJECT_REPO="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d.get('repoPath', ''))")"
 
 SERVE_DIR="$SERVE_APP_DIR/serve/${PROJECT_ID}"
@@ -89,9 +89,9 @@ write_status() {
     local now
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-    local apk_size=""
-    if [ "$status" = "ready" ] && [ -f "$SERVE_DIR/$APK_NAME" ]; then
-        apk_size=$(stat -f%z "$SERVE_DIR/$APK_NAME" 2>/dev/null || stat -c%s "$SERVE_DIR/$APK_NAME" 2>/dev/null || echo "0")
+    local artifact_size=""
+    if [ "$status" = "ready" ] && [ -f "$SERVE_DIR/$ARTIFACT_NAME" ]; then
+        artifact_size=$(stat -f%z "$SERVE_DIR/$ARTIFACT_NAME" 2>/dev/null || stat -c%s "$SERVE_DIR/$ARTIFACT_NAME" 2>/dev/null || echo "0")
     fi
 
     cat > "$STATUS_FILE" <<EOJSON
@@ -102,7 +102,7 @@ write_status() {
   "branch": "${BRANCH}",
   "message": $(printf '%s' "$COMMIT_MSG" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),
   "timestamp": "${now}",
-  "apkSize": ${apk_size:-0}${extra:+,
+  "artifactSize": ${artifact_size:-0}${extra:+,
   "error": $(printf '%s' "$extra" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}
 }
 EOJSON
@@ -137,7 +137,7 @@ if not found:
     projects.append({
         'id': '$PROJECT_ID',
         'name': '$PROJECT_NAME',
-        'apkFile': '$APK_NAME',
+        'artifactFile': '$ARTIFACT_NAME',
         'status': '$status',
         'lastBuildTime': '$now'
     })
@@ -286,11 +286,11 @@ cp "$BUILD_LOG_SERVE" "$LOG_FILE"
 
 if [ $BUILD_EXIT -eq 0 ] && [ -f "$ARTIFACT_PATH" ]; then
     # Atomic copy: temp file + mv
-    cp "$ARTIFACT_PATH" "$SERVE_DIR/${APK_NAME}.tmp"
-    mv "$SERVE_DIR/${APK_NAME}.tmp" "$SERVE_DIR/$APK_NAME"
+    cp "$ARTIFACT_PATH" "$SERVE_DIR/${ARTIFACT_NAME}.tmp"
+    mv "$SERVE_DIR/${ARTIFACT_NAME}.tmp" "$SERVE_DIR/$ARTIFACT_NAME"
     write_status "ready"
     update_projects_json "ready"
-    echo "[serve_app] Build SUCCESS - $APK_NAME ready"
+    echo "[serve_app] Build SUCCESS - $ARTIFACT_NAME ready"
     BUILD_RESULT="ready"
 else
     ERROR_MSG=$(tail -20 "$BUILD_LOG_SERVE" | tr '\n' '\x0a' | cut -c1-500)

@@ -18,7 +18,7 @@ fi
 # --- Read config ---
 PROJECT_ID="$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print(d['id'])")"
 PROJECT_NAME="$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print(d['name'])")"
-APK_NAME="$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print(d['apkName'])")"
+ARTIFACT_NAME="$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print(d.get('artifactName') or d['apkName'])")"
 
 echo "[serve_app] Registering project: $PROJECT_NAME ($PROJECT_ID)"
 
@@ -62,7 +62,7 @@ if [ ! -f "$STATUS_FILE" ]; then
   "branch": "",
   "message": "No build yet. Make a commit to trigger a build.",
   "timestamp": "",
-  "apkSize": 0
+  "artifactSize": 0
 }
 JSON
 fi
@@ -90,7 +90,7 @@ found = False
 for p in projects:
     if p.get('id') == '$PROJECT_ID':
         p['name'] = '$PROJECT_NAME'
-        p['apkFile'] = '$APK_NAME'
+        p['artifactFile'] = '$ARTIFACT_NAME'
         found = True
         print('[serve_app] Updated existing entry in projects.json')
         break
@@ -99,7 +99,7 @@ if not found:
     projects.append({
         'id': '$PROJECT_ID',
         'name': '$PROJECT_NAME',
-        'apkFile': '$APK_NAME',
+        'artifactFile': '$ARTIFACT_NAME',
         'status': 'unknown',
         'lastBuildTime': ''
     })

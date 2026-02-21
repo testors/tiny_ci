@@ -738,11 +738,13 @@ function renderArtifacts(artifacts) {
   let items = [];
 
   // Always show the serve_app-built (Stable) download when status is ready
-  if (proj && data && data.status === 'ready' && proj.apkFile) {
-    const size = data.apkSize ? ` <span class="artifact-size">${formatSize(data.apkSize)}</span>` : '';
+  const artifactFile = proj && (proj.artifactFile || proj.apkFile);
+  const artifactSize = data && (data.artifactSize ?? data.apkSize);
+  if (artifactFile && data && data.status === 'ready') {
+    const size = artifactSize ? ` <span class="artifact-size">${formatSize(artifactSize)}</span>` : '';
     items.push(
       `<div class="artifact-item">` +
-      `<a class="btn-artifact" href="${esc(selectedId)}/${esc(proj.apkFile)}">⬇ Download APK${size} <span class="badge-stable">Stable</span></a>` +
+      `<a class="btn-artifact" href="${esc(selectedId)}/${esc(artifactFile)}">⬇ Download${size} <span class="badge-stable">Stable</span></a>` +
       `</div>`
     );
   }
@@ -752,7 +754,7 @@ function renderArtifacts(artifacts) {
   // - different file (e.g. Release that serve_app never builds): show whenever available
   if (artifacts && artifacts.length > 0) {
     for (const a of artifacts.filter(x => x.available)) {
-      const isSameAsMain = proj && a.file === proj.apkFile;
+      const isSameAsMain = proj && a.file === artifactFile;
       if (isSameAsMain && !a.newer) continue;
 
       const isDebug = a.label.toLowerCase().includes('debug');
