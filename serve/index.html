@@ -23,11 +23,6 @@
     border-right: 1px solid #21262d;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-  }
-  #project-list {
-    flex: 1;
-    min-height: 0;
     overflow-y: auto;
   }
   #sidebar-header {
@@ -358,9 +353,10 @@
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    margin-top: auto;
+    position: sticky;
+    bottom: 0;
     border-top: 1px solid #21262d;
-    background: none;
+    background: #161b22;
     border-left: none;
     border-right: none;
     border-bottom: none;
