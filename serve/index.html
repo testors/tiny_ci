@@ -347,6 +347,146 @@
     text-align: right;
   }
 
+  /* Help button */
+  #btn-help {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    margin-top: auto;
+    border-top: 1px solid #21262d;
+    background: none;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    color: #6e7681;
+    font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    transition: color 0.15s, background 0.15s;
+  }
+  #btn-help:hover { color: #c9d1d9; background: #1c2128; }
+
+  /* Help modal */
+  #help-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  #help-overlay.open { display: flex; }
+  #help-modal {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 14px;
+    width: 100%;
+    max-width: 680px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #help-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px;
+    border-bottom: 1px solid #21262d;
+    flex-shrink: 0;
+  }
+  #help-modal-header h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #e1e4e8;
+  }
+  #btn-help-close {
+    background: none;
+    border: none;
+    color: #6e7681;
+    font-size: 20px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 4px;
+  }
+  #btn-help-close:hover { color: #c9d1d9; }
+  #help-modal-body {
+    overflow-y: auto;
+    padding: 22px 24px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #c9d1d9;
+  }
+  .help-section { margin-bottom: 28px; }
+  .help-section:last-child { margin-bottom: 0; }
+  .help-section h3 {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #58a6ff;
+    margin-bottom: 10px;
+  }
+  .help-section p { margin-bottom: 8px; color: #8b949e; }
+  .help-section p:last-child { margin-bottom: 0; }
+  .help-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  .help-table th {
+    text-align: left;
+    padding: 6px 10px;
+    color: #8b949e;
+    font-weight: 600;
+    border-bottom: 1px solid #21262d;
+  }
+  .help-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #161b22;
+    vertical-align: top;
+  }
+  .help-table tr:last-child td { border-bottom: none; }
+  .help-table td:first-child {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    color: #79c0ff;
+    white-space: nowrap;
+    width: 1%;
+  }
+  .help-code {
+    background: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: #c9d1d9;
+    white-space: pre;
+    overflow-x: auto;
+    margin-top: 8px;
+  }
+  .help-badge-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  .help-badge-row .badge-demo {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 8px;
+  }
+  .bd-stable { background: rgba(255,255,255,0.18); color: #fff; }
+  .bd-latest { background: #e06c00; color: #fff; }
+
   /* No projects empty state */
   .empty-sidebar {
     padding: 20px 16px;
@@ -411,6 +551,7 @@
   <div id="project-list">
     <div class="empty-sidebar">No projects registered yet.</div>
   </div>
+  <button id="btn-help" onclick="openHelp()">? Help</button>
 </nav>
 
 <main id="main">
@@ -835,6 +976,119 @@ window.addEventListener('hashchange', () => {
 
 // Reapply layout class when resizing between mobile/desktop
 window.addEventListener('resize', () => setMobileView(!!selectedId));
+
+// ── Help modal ──
+function openHelp() {
+  document.getElementById('help-overlay').classList.add('open');
+}
+function closeHelp() {
+  document.getElementById('help-overlay').classList.remove('open');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeHelp();
+});
+document.getElementById('help-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeHelp();
+});
 </script>
+
+<!-- Help modal -->
+<div id="help-overlay">
+  <div id="help-modal">
+    <div id="help-modal-header">
+      <h2>serve_app 사용법</h2>
+      <button id="btn-help-close" onclick="closeHelp()">✕</button>
+    </div>
+    <div id="help-modal-body">
+
+      <div class="help-section">
+        <h3>개요</h3>
+        <p>git commit 시 자동으로 빌드하고, 이 페이지에서 아티팩트를 다운로드할 수 있는 로컬 CI/CD 서버입니다. Android, iOS, Flutter 등 어떤 빌드 시스템이든 등록 가능합니다.</p>
+      </div>
+
+      <div class="help-section">
+        <h3>새 프로젝트 등록</h3>
+        <p>프로젝트 루트에 <code style="color:#79c0ff">.serve_app.json</code>을 만들고 <code style="color:#79c0ff">register.sh</code>를 한 번 실행하면 됩니다. 이후 git commit 마다 자동 빌드됩니다.</p>
+        <div class="help-code"># 1. 프로젝트 루트에 .serve_app.json 추가 (아래 설정 항목 참고)
+
+# 2. 등록 (git hook 자동 설치)
+cd /path/to/my-app
+~/Repos/serve_app/scripts/register.sh</div>
+      </div>
+
+      <div class="help-section">
+        <h3>.serve_app.json 설정 항목</h3>
+        <table class="help-table">
+          <tr><th>필드</th><th>설명</th></tr>
+          <tr><td>id</td><td>프로젝트 식별자 (영문 소문자·하이픈). URL과 디렉토리명에 사용됨</td></tr>
+          <tr><td>name</td><td>UI에 표시될 프로젝트 이름</td></tr>
+          <tr><td>buildCommand</td><td>빌드 명령어. 쉘에서 그대로 실행됨 (예: <code style="color:#79c0ff">./gradlew assembleDebug</code>)</td></tr>
+          <tr><td>buildWorkingDir</td><td>빌드를 실행할 디렉토리. 프로젝트 루트 기준 상대경로 가능</td></tr>
+          <tr><td>artifactPath</td><td>빌드 결과물 경로. 프로젝트 루트 기준 상대경로 가능</td></tr>
+          <tr><td>artifactName</td><td>서빙될 파일명 (예: <code style="color:#79c0ff">MyApp.apk</code>, <code style="color:#79c0ff">MyApp.ipa</code>)</td></tr>
+          <tr><td>watchArtifacts</td><td>로컬 빌드 감지 대상 목록 (선택, 아래 참고)</td></tr>
+        </table>
+        <div class="help-code">{
+  "id": "my-app",
+  "name": "My App",
+  "buildCommand": "./gradlew assembleDebug",
+  "buildWorkingDir": ".",
+  "artifactPath": "app/build/outputs/apk/debug/app-debug.apk",
+  "artifactName": "MyApp-debug.apk",
+  "watchArtifacts": [
+    { "label": "Debug",   "path": "app/build/outputs/apk/debug/app-debug.apk",   "file": "MyApp-debug.apk" },
+    { "label": "Release", "path": "app/build/outputs/apk/release/app-release.apk","file": "MyApp-release.apk" }
+  ]
+}</div>
+      </div>
+
+      <div class="help-section">
+        <h3>다운로드 버튼 종류</h3>
+        <p>프로젝트 상세 화면에서 두 종류의 다운로드 버튼이 표시될 수 있습니다.</p>
+        <div class="help-badge-row" style="margin-bottom:10px">
+          <span class="badge-demo bd-stable">Stable</span>
+          <span style="color:#8b949e;font-size:12px">— serve_app이 git commit 기준으로 빌드한 공식 빌드. 빌드 상태가 ready일 때 항상 표시.</span>
+        </div>
+        <div class="help-badge-row">
+          <span class="badge-demo bd-latest">Latest</span>
+          <span style="color:#8b949e;font-size:12px">— 저장소에서 직접 빌드한 최신 로컬 빌드. watchArtifacts 설정 시 자동 감지.</span>
+        </div>
+        <p style="margin-top:10px">watchArtifacts에 등록된 파일 중 <b style="color:#c9d1d9">artifactName과 다른 파일</b>(예: Release)은 파일이 존재하면 항상 표시되고, <b style="color:#c9d1d9">같은 파일</b>(예: Debug)은 로컬 빌드가 Stable보다 최신일 때만 추가로 표시됩니다.</p>
+      </div>
+
+      <div class="help-section">
+        <h3>수동 빌드</h3>
+        <p>프로젝트 상세 우측 상단의 <b style="color:#c9d1d9">▶ Build</b> 버튼을 클릭하면 git commit 없이도 즉시 빌드를 시작할 수 있습니다. 빌드 중에는 버튼이 비활성화되고 실시간 로그가 열립니다.</p>
+        <p>CLI에서 직접 실행하려면:</p>
+        <div class="help-code">~/Repos/serve_app/scripts/build.sh &lt;project-id&gt;</div>
+      </div>
+
+      <div class="help-section">
+        <h3>새 맥에 설치</h3>
+        <div class="help-code"># 1. serve_app 클론 (경로 고정 필수)
+git clone &lt;repo-url&gt; ~/Repos/serve_app
+
+# 2. 초기 설정 (LaunchAgent 등록 → 로그인 시 자동 시작)
+~/Repos/serve_app/install.sh
+
+# 3. 프로젝트 클론 + 등록
+cd ~/Repos/my-app &amp;&amp; ~/Repos/serve_app/scripts/register.sh</div>
+      </div>
+
+      <div class="help-section">
+        <h3>서버 관리</h3>
+        <div class="help-code"># 서버 재시작
+launchctl kickstart -k gui/$(id -u)/com.serve_app
+
+# 서버 중지
+launchctl bootout gui/$(id -u)/com.serve_app
+
+# 빌드 로그 CLI로 확인
+tail -f ~/Repos/serve_app/serve/&lt;id&gt;/build.log</div>
+      </div>
+
+    </div>
+  </div>
+</div>
 </body>
 </html>
