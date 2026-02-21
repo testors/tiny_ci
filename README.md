@@ -212,17 +212,25 @@ tiny_ci/
 
 ## 관리
 
+**macOS**
 ```bash
-# HTTP 서버 재시작
-launchctl kickstart -k gui/$(id -u)/com.tiny_ci
+launchctl kickstart -k gui/$(id -u)/com.tiny_ci   # 재시작
+launchctl bootout gui/$(id -u)/com.tiny_ci         # 중지
+```
 
-# HTTP 서버 중지
-launchctl bootout gui/$(id -u)/com.tiny_ci
+**Linux**
+```bash
+systemctl --user restart tiny_ci   # 재시작
+systemctl --user stop tiny_ci      # 중지
+systemctl --user status tiny_ci    # 상태 확인
+```
 
+**공통**
+```bash
 # 특정 프로젝트 수동 빌드
 /path/to/tiny_ci/scripts/build.sh my-app
 
-# 빌드 로그 실시간 확인 (CLI)
+# 빌드 로그 실시간 확인
 tail -f /path/to/tiny_ci/serve/my-app/build.log
 
 # 프로젝트 설정 재등록 (tiny_ci 경로 변경 등)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tiny_ci: Initial setup
-# Creates directory structure, initializes projects.json, registers LaunchAgent
+# Creates directory structure, initializes projects.json, registers system service
 # Usage: install.sh [--port PORT]   (default: 8888)
 
 set -euo pipefail
@@ -35,12 +35,14 @@ if [ ! -f "$PROJECTS_JSON" ]; then
     echo "[tiny_ci] Initialized serve/projects.json"
 fi
 
-# --- Install LaunchAgent (auto-start HTTP server on login) ---
-PLIST_NAME="com.tiny_ci.plist"
-PLIST_FILE="$HOME/Library/LaunchAgents/$PLIST_NAME"
-mkdir -p "$HOME/Library/LaunchAgents"
+# --- Install system service ---
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # ── macOS: LaunchAgent ──────────────────────────────────────────────────
+    PLIST_NAME="com.tiny_ci.plist"
+    PLIST_FILE="$HOME/Library/LaunchAgents/$PLIST_NAME"
+    mkdir -p "$HOME/Library/LaunchAgents"
 
-cat > "$PLIST_FILE" <<PLIST
+    cat > "$PLIST_FILE" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -67,27 +69,64 @@ cat > "$PLIST_FILE" <<PLIST
 </plist>
 PLIST
 
-# Remove old LaunchAgents if present (migration)
-for OLD_LABEL in com.logger.local-ci com.serve_app; do
-    OLD_PLIST="$HOME/Library/LaunchAgents/${OLD_LABEL}.plist"
-    if [ -f "$OLD_PLIST" ]; then
-        launchctl bootout "gui/$(id -u)" "$OLD_PLIST" 2>/dev/null || true
-        rm -f "$OLD_PLIST"
-        echo "[tiny_ci] Removed old LaunchAgent (${OLD_LABEL})"
-    fi
-done
+    # Remove old LaunchAgents if present (migration)
+    for OLD_LABEL in com.logger.local-ci com.serve_app; do
+        OLD_PLIST="$HOME/Library/LaunchAgents/${OLD_LABEL}.plist"
+        if [ -f "$OLD_PLIST" ]; then
+            launchctl bootout "gui/$(id -u)" "$OLD_PLIST" 2>/dev/null || true
+            rm -f "$OLD_PLIST"
+            echo "[tiny_ci] Removed old LaunchAgent (${OLD_LABEL})"
+        fi
+    done
 
-# Load (or reload) the new agent
-launchctl bootout "gui/$(id -u)" "$PLIST_FILE" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST_FILE"
+    launchctl bootout "gui/$(id -u)" "$PLIST_FILE" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$PLIST_FILE"
 
-echo ""
-echo "[tiny_ci] Installation complete!"
-echo ""
-echo "  HTTP server: running on port $PORT (auto-starts on login)"
-echo "  Manage:"
-echo "    launchctl kickstart -k gui/$(id -u)/com.tiny_ci   # restart"
-echo "    launchctl bootout gui/$(id -u)/com.tiny_ci        # stop"
+    echo ""
+    echo "[tiny_ci] Installation complete!"
+    echo ""
+    echo "  HTTP server: running on port $PORT (auto-starts on login)"
+    echo "  Manage:"
+    echo "    launchctl kickstart -k gui/$(id -u)/com.tiny_ci   # restart"
+    echo "    launchctl bootout gui/$(id -u)/com.tiny_ci        # stop"
+
+else
+    # ── Linux: systemd user service ─────────────────────────────────────────
+    SYSTEMD_DIR="$HOME/.config/systemd/user"
+    UNIT_FILE="$SYSTEMD_DIR/tiny_ci.service"
+    mkdir -p "$SYSTEMD_DIR"
+
+    cat > "$UNIT_FILE" <<UNIT
+[Unit]
+Description=tiny_ci Build Server
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 ${SCRIPT_DIR}/server.py ${PORT}
+WorkingDirectory=${SCRIPT_DIR}
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+UNIT
+
+    systemctl --user daemon-reload
+    systemctl --user enable tiny_ci
+    systemctl --user restart tiny_ci
+
+    # Allow service to run without an active login session
+    loginctl enable-linger "$USER" 2>/dev/null || true
+
+    echo ""
+    echo "[tiny_ci] Installation complete!"
+    echo ""
+    echo "  HTTP server: running on port $PORT (auto-starts on login)"
+    echo "  Manage:"
+    echo "    systemctl --user restart tiny_ci   # restart"
+    echo "    systemctl --user stop tiny_ci      # stop"
+fi
+
 echo ""
 echo "  Register a project:"
 echo "    cd /path/to/your/project"
