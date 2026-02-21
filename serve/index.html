@@ -1014,7 +1014,7 @@ document.getElementById('help-overlay').addEventListener('click', e => {
 
 # 2. 등록 (git hook 자동 설치)
 cd /path/to/my-app
-~/Repos/tiny_ci/scripts/register.sh</div>
+/path/to/tiny_ci/scripts/register.sh</div>
       </div>
 
       <div class="help-section">
@@ -1061,19 +1061,19 @@ cd /path/to/my-app
         <h3>수동 빌드</h3>
         <p>프로젝트 상세 우측 상단의 <b style="color:#c9d1d9">▶ Build</b> 버튼을 클릭하면 git commit 없이도 즉시 빌드를 시작할 수 있습니다. 빌드 중에는 버튼이 비활성화되고 실시간 로그가 열립니다.</p>
         <p>CLI에서 직접 실행하려면:</p>
-        <div class="help-code">~/Repos/tiny_ci/scripts/build.sh &lt;project-id&gt;</div>
+        <div class="help-code">/path/to/tiny_ci/scripts/build.sh &lt;project-id&gt;</div>
       </div>
 
       <div class="help-section">
         <h3>새 맥에 설치</h3>
         <div class="help-code"># 1. tiny_ci 클론 (경로 고정 필수)
-git clone &lt;repo-url&gt; ~/Repos/tiny_ci
+git clone &lt;repo-url&gt; /path/to/tiny_ci
 
 # 2. 초기 설정 (LaunchAgent 등록 → 로그인 시 자동 시작)
-~/Repos/tiny_ci/install.sh
+/path/to/tiny_ci/install.sh
 
 # 3. 프로젝트 클론 + 등록
-cd ~/Repos/my-app &amp;&amp; ~/Repos/tiny_ci/scripts/register.sh</div>
+cd /path/to/my-app &amp;&amp; /path/to/tiny_ci/scripts/register.sh</div>
       </div>
 
       <div class="help-section">
@@ -1085,7 +1085,7 @@ launchctl kickstart -k gui/$(id -u)/com.tiny_ci
 launchctl bootout gui/$(id -u)/com.tiny_ci
 
 # 빌드 로그 CLI로 확인
-tail -f ~/Repos/tiny_ci/serve/&lt;id&gt;/build.log</div>
+tail -f /path/to/tiny_ci/serve/&lt;id&gt;/build.log</div>
       </div>
 
     </div>

@@ -9,7 +9,7 @@ git commit 시 자동으로 빌드하고, `http://localhost:8888` 에서 다운�
 
 ---
 
-## 새 맥에 설치
+## 설치
 
 ### 사전 준비
 
@@ -29,22 +29,21 @@ brew install --cask flutter
 ### 설치 (3단계)
 
 ```bash
-# 1. tiny_ci 클론
-git clone <tiny_ci-repo-url> ~/Repos/tiny_ci
+# 1. tiny_ci 클론 (원하는 경로에)
+git clone <repo-url> /path/to/tiny_ci
 
 # 2. 초기 설정 (디렉토리 생성 + LaunchAgent 등록)
-~/Repos/tiny_ci/install.sh
+/path/to/tiny_ci/install.sh
 
-# 3. 앱 저장소 클론 + 등록
-git clone <project-repo-url> ~/Repos/my-app
-cd ~/Repos/my-app && ~/Repos/tiny_ci/scripts/register.sh
+# 3. 앱 저장소 등록
+cd /path/to/my-app
+/path/to/tiny_ci/scripts/register.sh
 ```
 
 완료. 이후 `git commit` 하면 자동 빌드 → `http://localhost:8888` 에서 확인.
 
-> **경로 주의**: tiny_ci는 반드시 `~/Repos/tiny_ci`에 클론해야 합니다.
-> `register.sh`가 설치하는 git hook이 이 절대 경로를 기록합니다.
-> 다른 경로를 사용하려면 클론 후 `register.sh`를 다시 실행하면 됩니다.
+> **참고**: `register.sh`는 실행 시점의 tiny_ci 경로를 git hook에 기록합니다.
+> tiny_ci를 다른 경로로 이동한 경우 각 프로젝트에서 `register.sh`를 다시 실행하세요.
 
 ---
 
@@ -77,7 +76,7 @@ cd ~/Repos/my-app && ~/Repos/tiny_ci/scripts/register.sh
 
 ```bash
 cd /path/to/my-app
-~/Repos/tiny_ci/scripts/register.sh
+/path/to/tiny_ci/scripts/register.sh
 ```
 
 ---
@@ -220,11 +219,11 @@ launchctl kickstart -k gui/$(id -u)/com.tiny_ci
 launchctl bootout gui/$(id -u)/com.tiny_ci
 
 # 특정 프로젝트 수동 빌드
-~/Repos/tiny_ci/scripts/build.sh my-app
+/path/to/tiny_ci/scripts/build.sh my-app
 
 # 빌드 로그 실시간 확인 (CLI)
-tail -f ~/Repos/tiny_ci/serve/my-app/build.log
+tail -f /path/to/tiny_ci/serve/my-app/build.log
 
-# 프로젝트 설정 재등록 (경로 변경 등)
-cd /path/to/my-app && ~/Repos/tiny_ci/scripts/register.sh
+# 프로젝트 설정 재등록 (tiny_ci 경로 변경 등)
+cd /path/to/my-app && /path/to/tiny_ci/scripts/register.sh
 ```
