@@ -42,7 +42,7 @@ cd ~/Repos/my-app && ~/Repos/tiny_ci/scripts/register.sh
 
 완료. 이후 `git commit` 하면 자동 빌드 → `http://localhost:8888` 에서 확인.
 
-> **경로 주의**: tiny_ci은 반드시 `~/Repos/tiny_ci`에 클론해야 합니다.
+> **경로 주의**: tiny_ci는 반드시 `~/Repos/tiny_ci`에 클론해야 합니다.
 > `register.sh`가 설치하는 git hook이 이 절대 경로를 기록합니다.
 > 다른 경로를 사용하려면 클론 후 `register.sh`를 다시 실행하면 됩니다.
 
