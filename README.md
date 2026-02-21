@@ -1,7 +1,7 @@
 # tiny_ci
 
 모바일/데스크톱 앱 프로젝트의 자동 빌드 & HTTP 서빙 인프라.
-git commit 시 자동으로 빌드하고, `http://localhost:8888` 에서 다운로드 가능.
+git commit 시 자동으로 빌드하고, 웹 UI에서 아티팩트를 다운로드할 수 있다. (기본 포트: 8888)
 
 - **플랫폼 무관**: Android(Gradle), Flutter, iOS(fastlane), macOS 등 `buildCommand`에 뭐든 지정 가능
 - **최소 설정**: 프로젝트 루트에 `.tiny_ci.json` 하나 + `register.sh` 한 번 실행
@@ -33,14 +33,15 @@ brew install --cask flutter
 git clone <repo-url> /path/to/tiny_ci
 
 # 2. 초기 설정 (디렉토리 생성 + LaunchAgent 등록)
-/path/to/tiny_ci/install.sh
+/path/to/tiny_ci/install.sh           # 기본 포트 8888
+/path/to/tiny_ci/install.sh --port 9000  # 포트 변경 시
 
 # 3. 앱 저장소 등록
 cd /path/to/my-app
 /path/to/tiny_ci/scripts/register.sh
 ```
 
-완료. 이후 `git commit` 하면 자동 빌드 → `http://localhost:8888` 에서 확인.
+완료. 이후 `git commit` 하면 자동 빌드 → `http://localhost:<PORT>` 에서 확인.
 
 > **참고**: `register.sh`는 실행 시점의 tiny_ci 경로를 git hook에 기록합니다.
 > tiny_ci를 다른 경로로 이동한 경우 각 프로젝트에서 `register.sh`를 다시 실행하세요.
@@ -184,7 +185,7 @@ tiny_ci/
 ├── server.py           # HTTP 서버 (정적 파일 + REST API)
 ├── projects/           # 등록된 프로젝트 설정 (register.sh가 자동 생성)
 │   └── my-app.json
-├── serve/              # HTTP 서빙 루트 (port 8888)
+├── serve/              # HTTP 서빙 루트 (기본 port 8888)
 │   ├── index.html      # 웹 UI
 │   ├── projects.json   # 전체 프로젝트 목록 (자동 갱신)
 │   └── my-app/

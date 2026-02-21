@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
 # tiny_ci: Initial setup
 # Creates directory structure, initializes projects.json, registers LaunchAgent
+# Usage: install.sh [--port PORT]   (default: 8888)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PORT=8888
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --port) PORT="$2"; shift 2 ;;
+        *) echo "Usage: install.sh [--port PORT]" >&2; exit 1 ;;
+    esac
+done
 
 echo "[tiny_ci] Installing..."
 
@@ -42,7 +51,7 @@ cat > "$PLIST_FILE" <<PLIST
     <array>
         <string>/usr/bin/python3</string>
         <string>${SCRIPT_DIR}/server.py</string>
-        <string>8888</string>
+        <string>${PORT}</string>
     </array>
     <key>WorkingDirectory</key>
     <string>${SCRIPT_DIR}</string>
@@ -75,7 +84,7 @@ launchctl bootstrap "gui/$(id -u)" "$PLIST_FILE"
 echo ""
 echo "[tiny_ci] Installation complete!"
 echo ""
-echo "  HTTP server: running on port 8888 (auto-starts on login)"
+echo "  HTTP server: running on port $PORT (auto-starts on login)"
 echo "  Manage:"
 echo "    launchctl kickstart -k gui/$(id -u)/com.tiny_ci   # restart"
 echo "    launchctl bootout gui/$(id -u)/com.tiny_ci        # stop"
