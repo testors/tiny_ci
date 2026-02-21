@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tiny_ci: Register a project
 # Run from the project root directory (where .tiny_ci.json lives)
-# Usage: ~/Repos/tiny_ci/scripts/register.sh
+# Usage: /path/to/tiny_ci/scripts/register.sh
 
 set -euo pipefail
 
@@ -147,7 +147,7 @@ echo "  Config:  $SERVE_APP_DIR/projects/${PROJECT_ID}.json"
 echo "  Serve:   $SERVE_APP_DIR/serve/${PROJECT_ID}/"
 echo ""
 echo "  Next steps:"
-echo "    1. Run: ~/Repos/tiny_ci/install.sh   (if not done already)"
+echo "    1. Run: $SERVE_APP_DIR/install.sh   (if not done already)"
 echo "    2. Make a commit in $PROJECT_ROOT → build triggers automatically"
 echo "    3. Open http://localhost:8888 to monitor builds"
 echo ""
