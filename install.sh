@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# serve_app: Initial setup
+# tiny_ci: Initial setup
 # Creates directory structure, initializes projects.json, registers LaunchAgent
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "[serve_app] Installing..."
+echo "[tiny_ci] Installing..."
 
 # --- Create directories ---
 mkdir -p "$SCRIPT_DIR/projects"
@@ -23,11 +23,11 @@ chmod +x "$SCRIPT_DIR/server.py"
 PROJECTS_JSON="$SCRIPT_DIR/serve/projects.json"
 if [ ! -f "$PROJECTS_JSON" ]; then
     echo "[]" > "$PROJECTS_JSON"
-    echo "[serve_app] Initialized serve/projects.json"
+    echo "[tiny_ci] Initialized serve/projects.json"
 fi
 
 # --- Install LaunchAgent (auto-start HTTP server on login) ---
-PLIST_NAME="com.serve_app.plist"
+PLIST_NAME="com.tiny_ci.plist"
 PLIST_FILE="$HOME/Library/LaunchAgents/$PLIST_NAME"
 mkdir -p "$HOME/Library/LaunchAgents"
 
@@ -37,7 +37,7 @@ cat > "$PLIST_FILE" <<PLIST
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.serve_app</string>
+    <string>com.tiny_ci</string>
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
@@ -58,27 +58,29 @@ cat > "$PLIST_FILE" <<PLIST
 </plist>
 PLIST
 
-# Remove old logger LaunchAgent if present (unload + delete plist)
-OLD_PLIST="$HOME/Library/LaunchAgents/com.logger.local-ci.plist"
-if [ -f "$OLD_PLIST" ]; then
-    launchctl bootout "gui/$(id -u)" "$OLD_PLIST" 2>/dev/null || true
-    rm -f "$OLD_PLIST"
-    echo "[serve_app] Removed old logger LaunchAgent (com.logger.local-ci)"
-fi
+# Remove old LaunchAgents if present (migration)
+for OLD_LABEL in com.logger.local-ci com.serve_app; do
+    OLD_PLIST="$HOME/Library/LaunchAgents/${OLD_LABEL}.plist"
+    if [ -f "$OLD_PLIST" ]; then
+        launchctl bootout "gui/$(id -u)" "$OLD_PLIST" 2>/dev/null || true
+        rm -f "$OLD_PLIST"
+        echo "[tiny_ci] Removed old LaunchAgent (${OLD_LABEL})"
+    fi
+done
 
 # Load (or reload) the new agent
 launchctl bootout "gui/$(id -u)" "$PLIST_FILE" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST_FILE"
 
 echo ""
-echo "[serve_app] Installation complete!"
+echo "[tiny_ci] Installation complete!"
 echo ""
 echo "  HTTP server: running on port 8888 (auto-starts on login)"
 echo "  Manage:"
-echo "    launchctl kickstart -k gui/$(id -u)/com.serve_app   # restart"
-echo "    launchctl bootout gui/$(id -u)/com.serve_app        # stop"
+echo "    launchctl kickstart -k gui/$(id -u)/com.tiny_ci   # restart"
+echo "    launchctl bootout gui/$(id -u)/com.tiny_ci        # stop"
 echo ""
 echo "  Register a project:"
 echo "    cd /path/to/your/project"
-echo "    ~/Repos/serve_app/scripts/register.sh"
+echo "    ~/Repos/tiny_ci/scripts/register.sh"
 echo ""

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# serve_app: Universal build script
+# tiny_ci: Universal build script
 # Usage: build.sh <project-id>
 # Reads projects/<id>.json, runs buildCommand, serves artifact
 
@@ -10,7 +10,7 @@ PROJECT_ID="${1:?Usage: build.sh <project-id>}"
 
 PROJECT_FILE="$SERVE_APP_DIR/projects/${PROJECT_ID}.json"
 if [ ! -f "$PROJECT_FILE" ]; then
-    echo "[serve_app] ERROR: Project config not found: $PROJECT_FILE" >&2
+    echo "[tiny_ci] ERROR: Project config not found: $PROJECT_FILE" >&2
     exit 1
 fi
 
@@ -27,7 +27,7 @@ LOG_DIR="$SERVE_APP_DIR/logs/${PROJECT_ID}"
 STATUS_FILE="$SERVE_DIR/build-status.json"
 HISTORY_FILE="$SERVE_DIR/build-history.json"
 PROJECTS_JSON="$SERVE_APP_DIR/serve/projects.json"
-PID_FILE="/tmp/serve_app-${PROJECT_ID}.pid"
+PID_FILE="/tmp/tiny_ci-${PROJECT_ID}.pid"
 BUILD_TIMEOUT=300  # 5 minutes
 
 mkdir -p "$SERVE_DIR" "$LOG_DIR"
@@ -50,7 +50,7 @@ kill_tree() {
 if [ -f "$PID_FILE" ]; then
     OLD_PID=$(cat "$PID_FILE" 2>/dev/null || true)
     if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
-        echo "[serve_app] Killing previous build of $PROJECT_ID (PID $OLD_PID)"
+        echo "[tiny_ci] Killing previous build of $PROJECT_ID (PID $OLD_PID)"
         kill_tree "$OLD_PID"
         sleep 1
     fi
@@ -156,7 +156,7 @@ strip_quarantine_if_needed() {
     local target_dir="$3"
     if [ ! -f "$sentinel" ]; then return; fi
     if xattr "$sentinel" 2>/dev/null | grep -q com.apple.quarantine; then
-        echo "[serve_app] Removing quarantine from $label..."
+        echo "[tiny_ci] Removing quarantine from $label..."
         xattr -r -d com.apple.quarantine "$target_dir" 2>/dev/null || true
     fi
 }
@@ -236,7 +236,7 @@ fi
 
 write_status "building"
 update_projects_json "building"
-echo "[serve_app] Building $PROJECT_NAME (${BRANCH}@${COMMIT_HASH})..."
+echo "[tiny_ci] Building $PROJECT_NAME (${BRANCH}@${COMMIT_HASH})..."
 
 # --- Build ---
 # Write directly to serve/<id>/build.log so it's live-accessible via HTTP during build.
@@ -246,7 +246,7 @@ BUILD_LOG_SERVE="$SERVE_DIR/build.log"
 
 BUILD_EXIT=0
 {
-    echo "=== serve_app Build ==="
+    echo "=== tiny_ci Build ==="
     echo "Project: $PROJECT_NAME ($PROJECT_ID)"
     echo "Time:    $(date)"
     echo "Branch:  $BRANCH"
@@ -271,7 +271,7 @@ BUILD_PID=$!
 (
     sleep "$BUILD_TIMEOUT"
     if kill -0 "$BUILD_PID" 2>/dev/null; then
-        echo "[serve_app] Build timed out after ${BUILD_TIMEOUT}s, killing..." >> "$BUILD_LOG_SERVE"
+        echo "[tiny_ci] Build timed out after ${BUILD_TIMEOUT}s, killing..." >> "$BUILD_LOG_SERVE"
         kill_tree "$BUILD_PID"
     fi
 ) &
@@ -290,13 +290,13 @@ if [ $BUILD_EXIT -eq 0 ] && [ -f "$ARTIFACT_PATH" ]; then
     mv "$SERVE_DIR/${ARTIFACT_NAME}.tmp" "$SERVE_DIR/$ARTIFACT_NAME"
     write_status "ready"
     update_projects_json "ready"
-    echo "[serve_app] Build SUCCESS - $ARTIFACT_NAME ready"
+    echo "[tiny_ci] Build SUCCESS - $ARTIFACT_NAME ready"
     BUILD_RESULT="ready"
 else
     ERROR_MSG=$(tail -20 "$BUILD_LOG_SERVE" | tr '\n' '\x0a' | cut -c1-500)
     write_status "failed" "$ERROR_MSG"
     update_projects_json "failed"
-    echo "[serve_app] Build FAILED - check $LOG_FILE"
+    echo "[tiny_ci] Build FAILED - check $LOG_FILE"
     BUILD_RESULT="failed"
 fi
 

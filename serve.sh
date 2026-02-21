@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# serve_app: HTTP server (manual start)
+# tiny_ci: HTTP server (manual start)
 # The LaunchAgent usually handles this automatically.
 
 set -euo pipefail
@@ -11,7 +11,7 @@ PORT="${1:-8888}"
 LOCAL_IP=$(ifconfig | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print $2}')
 
 echo "======================================="
-echo "  serve_app - APK Server"
+echo "  tiny_ci - Build Server"
 echo "======================================="
 echo ""
 echo "  http://${LOCAL_IP}:${PORT}"

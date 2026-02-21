@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""serve_app HTTP server
+"""tiny_ci HTTP server
 - Serves static files from serve/
 - POST /api/build/<project-id>  → triggers build.sh in background
 - GET  /api/scan/<project-id>   → check repo for newer APKs, copy & return artifacts.json
@@ -37,8 +37,8 @@ def scan_artifacts(project_id):
     serve_dir = SERVE_DIR / project_id
     serve_dir.mkdir(parents=True, exist_ok=True)
 
-    # serve_app build timestamp — used to determine if an artifact is "local"
-    # (built by the developer directly, after the last serve_app build)
+    # tiny_ci build timestamp — used to determine if an artifact is "local"
+    # (built by the developer directly, after the last tiny_ci build)
     build_mtime = 0.0
     status_file = serve_dir / "build-status.json"
     if status_file.exists():
@@ -79,7 +79,7 @@ def scan_artifacts(project_id):
             info["mtime"]     = datetime.fromtimestamp(
                 stat.st_mtime, tz=timezone.utc
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
-            # "newer" = the artifact in the repo was built after the last serve_app build
+            # "newer" = the artifact in the repo was built after the last tiny_ci build
             # → developer built it locally and it's more recent
             info["newer"] = src_mtime > build_mtime if src_exists else dst_mtime > build_mtime
 
@@ -146,5 +146,5 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8888
     server = http.server.HTTPServer(("0.0.0.0", port), Handler)
-    print(f"[serve_app] Server running on port {port}", flush=True)
+    print(f"[tiny_ci] Server running on port {port}", flush=True)
     server.serve_forever()

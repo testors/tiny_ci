@@ -1,10 +1,10 @@
-# serve_app
+# tiny_ci
 
 모바일/데스크톱 앱 프로젝트의 자동 빌드 & HTTP 서빙 인프라.
 git commit 시 자동으로 빌드하고, `http://localhost:8888` 에서 다운로드 가능.
 
 - **플랫폼 무관**: Android(Gradle), Flutter, iOS(fastlane), macOS 등 `buildCommand`에 뭐든 지정 가능
-- **최소 설정**: 프로젝트 루트에 `.serve_app.json` 하나 + `register.sh` 한 번 실행
+- **최소 설정**: 프로젝트 루트에 `.tiny_ci.json` 하나 + `register.sh` 한 번 실행
 - **웹 UI**: 빌드 상태, 히스토리, 실시간 로그, 수동 빌드 버튼, 아티팩트 다운로드
 
 ---
@@ -29,20 +29,20 @@ brew install --cask flutter
 ### 설치 (3단계)
 
 ```bash
-# 1. serve_app 클론
-git clone <serve_app-repo-url> ~/Repos/serve_app
+# 1. tiny_ci 클론
+git clone <tiny_ci-repo-url> ~/Repos/tiny_ci
 
 # 2. 초기 설정 (디렉토리 생성 + LaunchAgent 등록)
-~/Repos/serve_app/install.sh
+~/Repos/tiny_ci/install.sh
 
 # 3. 앱 저장소 클론 + 등록
 git clone <project-repo-url> ~/Repos/my-app
-cd ~/Repos/my-app && ~/Repos/serve_app/scripts/register.sh
+cd ~/Repos/my-app && ~/Repos/tiny_ci/scripts/register.sh
 ```
 
 완료. 이후 `git commit` 하면 자동 빌드 → `http://localhost:8888` 에서 확인.
 
-> **경로 주의**: serve_app은 반드시 `~/Repos/serve_app`에 클론해야 합니다.
+> **경로 주의**: tiny_ci은 반드시 `~/Repos/tiny_ci`에 클론해야 합니다.
 > `register.sh`가 설치하는 git hook이 이 절대 경로를 기록합니다.
 > 다른 경로를 사용하려면 클론 후 `register.sh`를 다시 실행하면 됩니다.
 
@@ -50,7 +50,7 @@ cd ~/Repos/my-app && ~/Repos/serve_app/scripts/register.sh
 
 ## 새 앱 프로젝트 추가
 
-### 1. 프로젝트 루트에 `.serve_app.json` 추가
+### 1. 프로젝트 루트에 `.tiny_ci.json` 추가
 
 ```json
 {
@@ -77,7 +77,7 @@ cd ~/Repos/my-app && ~/Repos/serve_app/scripts/register.sh
 
 ```bash
 cd /path/to/my-app
-~/Repos/serve_app/scripts/register.sh
+~/Repos/tiny_ci/scripts/register.sh
 ```
 
 ---
@@ -118,9 +118,9 @@ cd /path/to/my-app
 |------|-----------|------|
 | Download `Stable` | `status=ready`이면 항상 | — |
 | `{label}` `Latest` | `file`이 `artifactName`과 다른 경우 파일이 존재하면 항상 | 최신 빌드면 `Latest` |
-| `{label}` `Latest` | `file`이 `artifactName`과 같은 경우 (serve_app도 빌드) | 로컬이 더 최신일 때만 |
+| `{label}` `Latest` | `file`이 `artifactName`과 같은 경우 (tiny_ci도 빌드) | 로컬이 더 최신일 때만 |
 
-등록 후 `/api/scan/{id}` 호출 시 저장소 파일과 마지막 serve_app 빌드를 비교해 자동 감지·복사한다.
+등록 후 `/api/scan/{id}` 호출 시 저장소 파일과 마지막 tiny_ci 빌드를 비교해 자동 감지·복사한다.
 
 ---
 
@@ -178,7 +178,7 @@ cd /path/to/my-app
 ## 디렉토리 구조
 
 ```
-serve_app/
+tiny_ci/
 ├── scripts/
 │   ├── build.sh        # 범용 빌드 스크립트 (project-id를 인자로 받음)
 │   └── register.sh     # 프로젝트 등록 + git hook 설치
@@ -214,17 +214,17 @@ serve_app/
 
 ```bash
 # HTTP 서버 재시작
-launchctl kickstart -k gui/$(id -u)/com.serve_app
+launchctl kickstart -k gui/$(id -u)/com.tiny_ci
 
 # HTTP 서버 중지
-launchctl bootout gui/$(id -u)/com.serve_app
+launchctl bootout gui/$(id -u)/com.tiny_ci
 
 # 특정 프로젝트 수동 빌드
-~/Repos/serve_app/scripts/build.sh my-app
+~/Repos/tiny_ci/scripts/build.sh my-app
 
 # 빌드 로그 실시간 확인 (CLI)
-tail -f ~/Repos/serve_app/serve/my-app/build.log
+tail -f ~/Repos/tiny_ci/serve/my-app/build.log
 
 # 프로젝트 설정 재등록 (경로 변경 등)
-cd /path/to/my-app && ~/Repos/serve_app/scripts/register.sh
+cd /path/to/my-app && ~/Repos/tiny_ci/scripts/register.sh
 ```
