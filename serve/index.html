@@ -893,12 +893,13 @@ function renderArtifacts(artifacts) {
   }
 
   // Additionally show local builds from watchArtifacts (Latest)
-  // - same file as apkFile (e.g. Debug that tiny_ci also builds): only if newer=true
-  // - different file (e.g. Release that tiny_ci never builds): show whenever available
+  // Only shown when the local build is newer than the Stable build
+  const stableTime = data && data.timestamp ? new Date(data.timestamp).getTime() : 0;
   if (artifacts && artifacts.length > 0) {
     for (const a of artifacts.filter(x => x.available)) {
       const isSameAsMain = proj && a.file === artifactFile;
       if (isSameAsMain && !a.newer) continue;
+      if (!isSameAsMain && a.mtime && stableTime && new Date(a.mtime).getTime() <= stableTime) continue;
 
       const isDebug = a.label.toLowerCase().includes('debug');
       const cls     = 'btn-artifact' + (isDebug ? ' btn-artifact-debug' : '');
