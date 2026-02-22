@@ -884,10 +884,11 @@ function renderArtifacts(artifacts) {
   const artifactSize = data && (data.artifactSize ?? data.apkSize);
   if (artifactFile && data && data.status === 'ready') {
     const size = artifactSize ? ` <span class="artifact-size">${formatSize(artifactSize)}</span>` : '';
+    const time = data.timestamp ? `<div class="artifact-time">${relativeTime(data.timestamp)}</div>` : '';
     items.push(
       `<div class="artifact-item">` +
       `<a class="btn-artifact" href="${esc(selectedId)}/${esc(artifactFile)}">⬇ Download${size} <span class="badge-stable">Stable</span></a>` +
-      `</div>`
+      `${time}</div>`
     );
   }
 
