@@ -596,6 +596,7 @@ let projects = [];
 let selectedId = null;
 let statusData = null;
 let historyData = [];
+let artifactsData = null;
 
 // ── Utilities ──
 function esc(s) {
@@ -729,6 +730,9 @@ function renderDetail() {
     logChevron.className = 'log-chevron';
   }
 
+  // Downloads: render immediately with cached artifacts (Stable shows without waiting for scan)
+  renderArtifacts(artifactsData);
+
   // History
   renderHistory();
 }
@@ -774,6 +778,7 @@ function selectProject(id) {
   selectedId = id;
   statusData = null;
   historyData = [];
+  artifactsData = null;
   document.getElementById('log-body').textContent = '';
   window.location.hash = id;
   setMobileView(true);
@@ -921,9 +926,10 @@ async function fetchArtifacts() {
   try {
     const res = await fetch(`/api/scan/${selectedId}?t=` + Date.now());
     if (!res.ok) return;
-    renderArtifacts(await res.json());
+    artifactsData = await res.json();
+    renderArtifacts(artifactsData);
   } catch (e) {
-    renderArtifacts(null);
+    renderArtifacts(artifactsData);
   }
 }
 
