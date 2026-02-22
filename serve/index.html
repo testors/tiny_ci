@@ -858,10 +858,11 @@ async function fetchLog() {
     if (!res.ok) return;
     const text = await res.text();
     const body = document.getElementById('log-body');
-    if (body.style.display === 'none') return; // collapsed — don't update
-    const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
     body.textContent = text;
-    if (atBottom) body.scrollTop = body.scrollHeight;
+    if (body.style.display !== 'none') {
+      const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+      if (atBottom) body.scrollTop = body.scrollHeight;
+    }
   } catch (e) {}
 }
 
