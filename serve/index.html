@@ -334,7 +334,9 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: pointer;
   }
+  .history-msg:hover { color: #58a6ff; }
   .history-branch {
     color: #8b949e;
     flex-shrink: 0;
@@ -345,6 +347,63 @@
     flex-shrink: 0;
     width: 56px;
     text-align: right;
+  }
+  .history-pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 10px 16px;
+    font-size: 12px;
+    color: #6e7681;
+    border-top: 1px solid #21262d;
+  }
+  .history-pager button {
+    background: none;
+    border: 1px solid #30363d;
+    color: #c9d1d9;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .history-pager button:hover:not(:disabled) { background: #21262d; border-color: #8b949e; }
+  .history-pager button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Commit message popup */
+  #commit-popup {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  #commit-popup.open { display: flex; }
+  #commit-popup-box {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 20px 24px;
+    max-width: 520px;
+    width: 100%;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  #commit-popup-hash {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 12px;
+    color: #58a6ff;
+    margin-bottom: 8px;
+  }
+  #commit-popup-msg {
+    font-size: 14px;
+    color: #e1e4e8;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   /* Help button */
@@ -596,6 +655,8 @@ let projects = [];
 let selectedId = null;
 let statusData = null;
 let historyData = [];
+let historyPage = 0;
+const HISTORY_PAGE_SIZE = 20;
 let artifactsData = null;
 
 // ── Utilities ──
@@ -744,16 +805,44 @@ function renderHistory() {
     return;
   }
   el.style.display = 'block';
-  el.innerHTML = historyData.map(item => {
+  const total = historyData.length;
+  const totalPages = Math.ceil(total / HISTORY_PAGE_SIZE);
+  if (historyPage >= totalPages) historyPage = totalPages - 1;
+  const start = historyPage * HISTORY_PAGE_SIZE;
+  const page = historyData.slice(start, start + HISTORY_PAGE_SIZE);
+
+  let html = page.map((item, i) => {
     const dot = dotClass(item.status);
+    const idx = start + i;
     return `<div class="history-item">
       <span class="history-dot ${dot}"></span>
       <span class="history-commit">${esc(item.commit || '')}</span>
-      <span class="history-msg">${esc(item.message || '')}</span>
+      <span class="history-msg" onclick="showCommitPopup(${idx})">${esc(item.message || '')}</span>
       <span class="history-branch">${esc(item.branch || '')}</span>
       <span class="history-time">${relativeTime(item.timestamp)}</span>
     </div>`;
   }).join('');
+
+  if (totalPages > 1) {
+    html += `<div class="history-pager">
+      <button onclick="historyPage--;renderHistory()" ${historyPage === 0 ? 'disabled' : ''}>← Prev</button>
+      <span>${historyPage + 1} / ${totalPages}</span>
+      <button onclick="historyPage++;renderHistory()" ${historyPage >= totalPages - 1 ? 'disabled' : ''}>Next →</button>
+    </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function showCommitPopup(idx) {
+  const item = historyData[idx];
+  if (!item) return;
+  document.getElementById('commit-popup-hash').textContent = `${item.branch || ''} @ ${item.commit || ''}  ·  ${relativeTime(item.timestamp)}`;
+  document.getElementById('commit-popup-msg').textContent = item.message || '';
+  document.getElementById('commit-popup').classList.add('open');
+}
+
+function closeCommitPopup() {
+  document.getElementById('commit-popup').classList.remove('open');
 }
 
 // ── Mobile navigation ──
@@ -778,6 +867,7 @@ function selectProject(id) {
   selectedId = id;
   statusData = null;
   historyData = [];
+  historyPage = 0;
   artifactsData = null;
   document.getElementById('log-body').textContent = '';
   window.location.hash = id;
@@ -995,7 +1085,7 @@ function closeHelp() {
   document.getElementById('help-overlay').classList.remove('open');
 }
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeHelp();
+  if (e.key === 'Escape') { closeHelp(); closeCommitPopup(); }
 });
 document.getElementById('help-overlay').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeHelp();
@@ -1098,6 +1188,12 @@ tail -f /path/to/tiny_ci/serve/&lt;id&gt;/build.log</div>
       </div>
 
     </div>
+  </div>
+</div>
+<div id="commit-popup" onclick="if(event.target===this)closeCommitPopup()">
+  <div id="commit-popup-box">
+    <div id="commit-popup-hash"></div>
+    <div id="commit-popup-msg"></div>
   </div>
 </div>
 </body>
