@@ -2,7 +2,8 @@
 """tiny_ci HTTP server
 - Serves static files from serve/
 - POST /api/build/<project-id>  → triggers build.sh in background
-- GET  /api/scan/<project-id>   → check repo for newer APKs, copy & return artifacts.json
+- GET  /api/scan/<project-id>   → check repo for build artifacts, return metadata
+- GET  /<project-id>/<file>     → serve artifact (lazy copy from repo on first download)
 """
 
 import http.server
@@ -18,79 +19,97 @@ SERVE_DIR     = SERVE_APP_DIR / "serve"
 BUILD_SCRIPT  = SERVE_APP_DIR / "scripts" / "build.sh"
 
 
-def scan_artifacts(project_id):
-    """Compare repo build outputs against served files.
-    Copy anything newer, write artifacts.json, return artifact list.
-    Returns None if project not found, [] if no watchArtifacts configured.
-    """
+def _load_project(project_id):
+    """Load project config. Returns (config, watch_artifacts) or (None, None)."""
     project_file = SERVE_APP_DIR / "projects" / f"{project_id}.json"
     if not project_file.exists():
-        return None
-
+        return None, None
     with open(project_file) as f:
         config = json.load(f)
+    return config, config.get("watchArtifacts", [])
 
-    watch_artifacts = config.get("watchArtifacts", [])
+
+def _build_mtime(project_id):
+    """Get the last tiny_ci build timestamp as epoch float."""
+    status_file = SERVE_DIR / project_id / "build-status.json"
+    if not status_file.exists():
+        return 0.0
+    try:
+        with open(status_file) as f:
+            ts = json.load(f).get("timestamp", "")
+        if ts:
+            return datetime.fromisoformat(
+                ts.replace("Z", "+00:00")
+            ).timestamp()
+    except Exception:
+        pass
+    return 0.0
+
+
+def scan_artifacts(project_id):
+    """Check repo build outputs — metadata only, no file copying.
+    Returns None if project not found, [] if no watchArtifacts configured.
+    """
+    config, watch_artifacts = _load_project(project_id)
+    if config is None:
+        return None
     if not watch_artifacts:
         return []
 
-    serve_dir = SERVE_DIR / project_id
-    serve_dir.mkdir(parents=True, exist_ok=True)
-
-    # tiny_ci build timestamp — used to determine if an artifact is "local"
-    # (built by the developer directly, after the last tiny_ci build)
-    build_mtime = 0.0
-    status_file = serve_dir / "build-status.json"
-    if status_file.exists():
-        try:
-            with open(status_file) as f:
-                ts = json.load(f).get("timestamp", "")
-            if ts:
-                build_mtime = datetime.fromisoformat(
-                    ts.replace("Z", "+00:00")
-                ).timestamp()
-        except Exception:
-            pass
+    build_mt = _build_mtime(project_id)
 
     result = []
     for artifact in watch_artifacts:
-        src     = Path(artifact["path"])
-        dst     = serve_dir / artifact["file"]
-        label   = artifact.get("label", artifact["file"])
-        info    = {"label": label, "file": artifact["file"], "available": False, "newer": False}
+        src   = Path(artifact["path"])
+        label = artifact.get("label", artifact["file"])
+        info  = {"label": label, "file": artifact["file"], "available": False, "newer": False}
 
-        src_exists  = src.exists()
-        src_mtime   = src.stat().st_mtime if src_exists else 0.0
-        dst_exists  = dst.exists()
-        dst_mtime   = dst.stat().st_mtime if dst_exists else 0.0
-
-        # Copy if the repo's file is newer than what's currently served
-        if src_exists and src_mtime > dst_mtime:
-            tmp = serve_dir / (artifact["file"] + ".tmp")
-            shutil.copy2(str(src), str(tmp))  # preserves mtime
-            tmp.rename(dst)
-            dst_exists = True
-            dst_mtime  = dst.stat().st_mtime
-
-        if dst_exists:
-            stat = dst.stat()
+        if src.exists():
+            stat = src.stat()
             info["available"] = True
             info["size"]      = stat.st_size
             info["mtime"]     = datetime.fromtimestamp(
                 stat.st_mtime, tz=timezone.utc
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
-            # "newer" = the artifact in the repo was built after the last tiny_ci build
-            # → developer built it locally and it's more recent
-            info["newer"] = src_mtime > build_mtime if src_exists else dst_mtime > build_mtime
+            info["newer"] = stat.st_mtime > build_mt
 
         result.append(info)
 
-    # Persist so the UI can also poll artifacts.json directly
-    artifacts_file = serve_dir / "artifacts.json"
-    with open(artifacts_file, "w") as f:
+    # Persist for direct polling
+    serve_dir = SERVE_DIR / project_id
+    serve_dir.mkdir(parents=True, exist_ok=True)
+    with open(serve_dir / "artifacts.json", "w") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     return result
+
+
+def _lazy_copy_artifact(project_id, filename):
+    """Copy artifact from repo source to serve dir on demand.
+    Returns the serve path if successful, None otherwise.
+    """
+    config, watch_artifacts = _load_project(project_id)
+    if config is None:
+        return None
+
+    for artifact in watch_artifacts:
+        if artifact["file"] == filename:
+            src = Path(artifact["path"])
+            if not src.exists():
+                return None
+            serve_dir = SERVE_DIR / project_id
+            serve_dir.mkdir(parents=True, exist_ok=True)
+            dst = serve_dir / filename
+            # Copy if source is newer than served copy (or served copy doesn't exist)
+            src_mtime = src.stat().st_mtime
+            dst_mtime = dst.stat().st_mtime if dst.exists() else 0.0
+            if src_mtime > dst_mtime:
+                tmp = serve_dir / (filename + ".tmp")
+                shutil.copy2(str(src), str(tmp))
+                tmp.rename(dst)
+            return dst
+
+    return None
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -98,8 +117,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(SERVE_DIR), **kwargs)
 
     def do_GET(self):
-        # GET /api/scan/<project-id>
         parts = self.path.split("?")[0].strip("/").split("/")
+
+        # GET /api/scan/<project-id>
         if len(parts) == 3 and parts[0] == "api" and parts[1] == "scan":
             project_id = parts[2]
             result = scan_artifacts(project_id)
@@ -107,8 +127,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self._json(404, {"error": f"project '{project_id}' not found"})
             else:
                 self._json(200, result)
-        else:
-            super().do_GET()
+            return
+
+        # GET /<project-id>/<file> — lazy copy for watchArtifact downloads
+        if len(parts) == 2:
+            project_id, filename = parts
+            serve_path = SERVE_DIR / project_id / filename
+            if not serve_path.exists():
+                _lazy_copy_artifact(project_id, filename)
+
+        super().do_GET()
 
     def do_POST(self):
         # POST /api/build/<project-id>
