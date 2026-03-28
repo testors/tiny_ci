@@ -9,8 +9,12 @@
 import http.server
 import subprocess
 import json
+import os
 import shutil
 import sys
+import urllib.parse
+import email.utils
+from http import HTTPStatus
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -115,6 +119,60 @@ def _lazy_copy_artifact(project_id, filename):
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(SERVE_DIR), **kwargs)
+        self._range = None
+
+    @staticmethod
+    def _parse_range_header(range_header, size):
+        if not range_header:
+            return None
+        if size <= 0 or not range_header.startswith("bytes="):
+            raise ValueError("invalid range")
+
+        spec = range_header[6:].strip()
+        if "," in spec:
+            raise ValueError("multiple ranges not supported")
+
+        start_s, sep, end_s = spec.partition("-")
+        if sep != "-":
+            raise ValueError("invalid range")
+
+        start_s = start_s.strip()
+        end_s = end_s.strip()
+
+        if not start_s:
+            if not end_s:
+                raise ValueError("invalid range")
+            suffix_len = int(end_s)
+            if suffix_len <= 0:
+                raise ValueError("invalid range")
+            suffix_len = min(suffix_len, size)
+            return size - suffix_len, size - 1
+
+        start = int(start_s)
+        if start < 0 or start >= size:
+            raise ValueError("range out of bounds")
+
+        if not end_s:
+            return start, size - 1
+
+        end = int(end_s)
+        if end < start:
+            raise ValueError("invalid range")
+
+        return start, min(end, size - 1)
+
+    def _prepare_artifact(self):
+        parts = self.path.split("?")[0].strip("/").split("/")
+        if len(parts) != 2:
+            return
+
+        project_id, filename = parts
+        if not (SERVE_APP_DIR / "projects" / f"{project_id}.json").exists():
+            return
+
+        serve_path = SERVE_DIR / project_id / filename
+        if not serve_path.exists():
+            _lazy_copy_artifact(project_id, filename)
 
     def do_GET(self):
         parts = self.path.split("?")[0].strip("/").split("/")
@@ -131,12 +189,111 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         # GET /<project-id>/<file> — lazy copy for watchArtifact downloads
         if len(parts) == 2:
-            project_id, filename = parts
-            serve_path = SERVE_DIR / project_id / filename
-            if not serve_path.exists():
-                _lazy_copy_artifact(project_id, filename)
+            self._prepare_artifact()
 
         super().do_GET()
+
+    def do_HEAD(self):
+        self._prepare_artifact()
+        super().do_HEAD()
+
+    def send_head(self):
+        self._range = None
+        path = self.translate_path(self.path)
+        f = None
+
+        if os.path.isdir(path):
+            parts = urllib.parse.urlsplit(self.path)
+            if not parts.path.endswith(("/", "%2f", "%2F")):
+                self.send_response(HTTPStatus.MOVED_PERMANENTLY)
+                new_parts = (parts[0], parts[1], parts[2] + "/", parts[3], parts[4])
+                new_url = urllib.parse.urlunsplit(new_parts)
+                self.send_header("Location", new_url)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return None
+            for index in self.index_pages:
+                index = os.path.join(path, index)
+                if os.path.isfile(index):
+                    path = index
+                    break
+            else:
+                return self.list_directory(path)
+
+        ctype = self.guess_type(path)
+        if path.endswith("/"):
+            self.send_error(HTTPStatus.NOT_FOUND, "File not found")
+            return None
+
+        try:
+            f = open(path, "rb")
+        except OSError:
+            self.send_error(HTTPStatus.NOT_FOUND, "File not found")
+            return None
+
+        try:
+            fs = os.fstat(f.fileno())
+            if "If-Modified-Since" in self.headers and "If-None-Match" not in self.headers:
+                try:
+                    ims = email.utils.parsedate_to_datetime(self.headers["If-Modified-Since"])
+                except (TypeError, IndexError, OverflowError, ValueError):
+                    pass
+                else:
+                    if ims.tzinfo is None:
+                        ims = ims.replace(tzinfo=timezone.utc)
+                    if ims.tzinfo is timezone.utc:
+                        last_modif = datetime.fromtimestamp(fs.st_mtime, timezone.utc)
+                        last_modif = last_modif.replace(microsecond=0)
+                        if last_modif <= ims:
+                            self.send_response(HTTPStatus.NOT_MODIFIED)
+                            self.end_headers()
+                            f.close()
+                            return None
+
+            try:
+                requested_range = self._parse_range_header(self.headers.get("Range"), fs.st_size)
+            except ValueError:
+                self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                self.send_header("Content-Range", f"bytes */{fs.st_size}")
+                self.send_header("Content-Length", "0")
+                self.send_header("Accept-Ranges", "bytes")
+                self.end_headers()
+                f.close()
+                return None
+
+            if requested_range is None:
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-type", ctype)
+                self.send_header("Content-Length", str(fs.st_size))
+            else:
+                start, end = requested_range
+                self._range = (start, end)
+                self.send_response(HTTPStatus.PARTIAL_CONTENT)
+                self.send_header("Content-type", ctype)
+                self.send_header("Content-Length", str(end - start + 1))
+                self.send_header("Content-Range", f"bytes {start}-{end}/{fs.st_size}")
+
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Last-Modified", self.date_time_string(fs.st_mtime))
+            self.end_headers()
+            return f
+        except Exception:
+            f.close()
+            raise
+
+    def copyfile(self, source, outputfile):
+        if self._range is None:
+            return super().copyfile(source, outputfile)
+
+        start, end = self._range
+        remaining = end - start + 1
+        source.seek(start)
+        while remaining > 0:
+            chunk = source.read(min(64 * 1024, remaining))
+            if not chunk:
+                break
+            outputfile.write(chunk)
+            remaining -= len(chunk)
 
     def do_POST(self):
         # POST /api/build/<project-id>
