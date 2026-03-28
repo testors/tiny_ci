@@ -117,6 +117,8 @@ def _lazy_copy_artifact(project_id, filename):
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    INDEX_PAGES = ("index.html", "index.htm")
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(SERVE_DIR), **kwargs)
         self._range = None
@@ -212,7 +214,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return None
-            for index in self.index_pages:
+            index_pages = getattr(self, "index_pages", self.INDEX_PAGES)
+            for index in index_pages:
                 index = os.path.join(path, index)
                 if os.path.isfile(index):
                     path = index
