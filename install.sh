@@ -24,7 +24,9 @@ mkdir -p "$SCRIPT_DIR/logs"
 
 # --- Make scripts executable ---
 chmod +x "$SCRIPT_DIR/scripts/build.sh"
+chmod +x "$SCRIPT_DIR/scripts/trigger.sh"
 chmod +x "$SCRIPT_DIR/scripts/register.sh"
+chmod +x "$SCRIPT_DIR/scripts/install_git_hooks.py"
 chmod +x "$SCRIPT_DIR/serve.sh"
 chmod +x "$SCRIPT_DIR/server.py"
 
@@ -126,6 +128,30 @@ UNIT
     echo "    systemctl --user restart tiny_ci   # restart"
     echo "    systemctl --user stop tiny_ci      # stop"
 fi
+
+# --- Sync git hooks for already registered projects ---
+for PROJECT_FILE in "$SCRIPT_DIR"/projects/*.json; do
+    [ -f "$PROJECT_FILE" ] || continue
+
+    PROJECT_ID="$(python3 -c "import json; d=json.load(open('$PROJECT_FILE')); print(d['id'])")"
+    PROJECT_NAME="$(python3 -c "import json; d=json.load(open('$PROJECT_FILE')); print(d['name'])")"
+    PROJECT_REPO="$(python3 -c "import json; d=json.load(open('$PROJECT_FILE')); print(d.get('repoPath', ''))")"
+
+    if [ -z "$PROJECT_REPO" ] || [ ! -d "$PROJECT_REPO" ]; then
+        echo "[tiny_ci] Skipping hook sync for ${PROJECT_ID}: missing repoPath"
+        continue
+    fi
+
+    if ! git -C "$PROJECT_REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "[tiny_ci] Skipping hook sync for ${PROJECT_ID}: not a git repo"
+        continue
+    fi
+
+    python3 "$SCRIPT_DIR/scripts/install_git_hooks.py" \
+        "$PROJECT_REPO" \
+        "$PROJECT_ID" \
+        "$PROJECT_NAME"
+done
 
 echo ""
 echo "  Register a project:"

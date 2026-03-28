@@ -43,6 +43,8 @@ cd /path/to/my-app
 
 완료. 이후 `git commit` 하면 자동 빌드 → `http://localhost:<PORT>` 에서 확인.
 
+> `install.sh` 는 이미 등록된 프로젝트들의 git hook도 최신 방식으로 다시 동기화한다.
+
 > **참고**: `register.sh`는 실행 시점의 tiny_ci 경로를 git hook에 기록합니다.
 > tiny_ci를 다른 경로로 이동한 경우 각 프로젝트에서 `register.sh`를 다시 실행하세요.
 

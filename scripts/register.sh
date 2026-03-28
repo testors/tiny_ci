@@ -114,29 +114,10 @@ GIT_DIR="$(git -C "$PROJECT_ROOT" rev-parse --git-dir 2>/dev/null || true)"
 if [ -z "$GIT_DIR" ]; then
     echo "[tiny_ci] WARNING: $PROJECT_ROOT is not a git repository. Skipping hook installation."
 else
-    # Resolve git dir to absolute path
-    if [[ "$GIT_DIR" != /* ]]; then
-        GIT_DIR="$PROJECT_ROOT/$GIT_DIR"
-    fi
-    HOOK_FILE="$GIT_DIR/hooks/post-commit"
-    HOOK_MARKER="build.sh\" ${PROJECT_ID}"
-
-    if [ -f "$HOOK_FILE" ] && grep -qF "$HOOK_MARKER" "$HOOK_FILE"; then
-        echo "[tiny_ci] Git hook already installed for $PROJECT_ID"
-    else
-        if [ -f "$HOOK_FILE" ]; then
-            echo "[tiny_ci] Appending to existing post-commit hook..."
-            echo "" >> "$HOOK_FILE"
-        else
-            printf '#!/usr/bin/env bash\n' > "$HOOK_FILE"
-        fi
-        cat >> "$HOOK_FILE" <<HOOK
-# tiny_ci: auto-build ${PROJECT_NAME} on commit
-nohup "${SERVE_APP_DIR}/scripts/build.sh" ${PROJECT_ID} > /dev/null 2>&1 &
-HOOK
-        chmod +x "$HOOK_FILE"
-        echo "[tiny_ci] Git hook installed: $HOOK_FILE"
-    fi
+    python3 "$SERVE_APP_DIR/scripts/install_git_hooks.py" \
+        "$PROJECT_ROOT" \
+        "$PROJECT_ID" \
+        "$PROJECT_NAME"
 fi
 
 echo ""
