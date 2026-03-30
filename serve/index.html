@@ -978,12 +978,15 @@ function renderArtifacts(artifacts) {
   // Always show the tiny_ci-built (Stable) download when status is ready
   const artifactFile = proj && (proj.artifactFile || proj.apkFile);
   const artifactSize = data && (data.artifactSize ?? data.apkSize);
+  const stableDownloadUrl = artifactFile && data
+    ? `${esc(selectedId)}/${esc(artifactFile)}?v=${encodeURIComponent(data.commit || data.timestamp || Date.now())}`
+    : null;
   if (artifactFile && data && data.status === 'ready') {
     const size = artifactSize ? ` <span class="artifact-size">${formatSize(artifactSize)}</span>` : '';
     const time = data.timestamp ? `<div class="artifact-time">${relativeTime(data.timestamp)}</div>` : '';
     items.push(
       `<div class="artifact-item">` +
-      `<a class="btn-artifact" href="${esc(selectedId)}/${esc(artifactFile)}">⬇ Download${size} <span class="badge-stable">Stable</span></a>` +
+      `<a class="btn-artifact" href="${stableDownloadUrl}">⬇ Download${size} <span class="badge-stable">Stable</span></a>` +
       `${time}</div>`
     );
   }
@@ -1001,9 +1004,10 @@ function renderArtifacts(artifacts) {
       const cls     = 'btn-artifact' + (isDebug ? ' btn-artifact-debug' : '');
       const size    = a.size ? `<span class="artifact-size">${formatSize(a.size)}</span>` : '';
       const time    = a.mtime ? `<div class="artifact-time">${relativeTime(a.mtime)}</div>` : '';
+      const cacheKey = a.mtime || data?.commit || Date.now();
       items.push(
         `<div class="artifact-item">` +
-        `<a class="${cls}" href="${esc(selectedId)}/${esc(a.file)}">⬇ ${esc(a.label)} ${size}<span class="badge-latest">Latest</span></a>` +
+        `<a class="${cls}" href="${esc(selectedId)}/${esc(a.file)}?v=${encodeURIComponent(cacheKey)}">⬇ ${esc(a.label)} ${size}<span class="badge-latest">Latest</span></a>` +
         `${time}</div>`
       );
     }

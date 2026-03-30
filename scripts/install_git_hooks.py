@@ -61,6 +61,7 @@ def _strip_existing_block(lines: list[str], project_id: str) -> list[str]:
 def _write_hook(
     hook_path: Path,
     project_id: str,
+    repo_path: Path,
     trigger_script: Path,
 ) -> None:
     if hook_path.exists():
@@ -80,7 +81,7 @@ def _write_hook(
     lines.extend(
         [
             f"# tiny_ci: begin {project_id}",
-            f"\"{trigger_script}\" \"{project_id}\" > /dev/null 2>&1 || true",
+            f"\"{trigger_script}\" \"{project_id}\" \"{repo_path}\" > /dev/null 2>&1 || true",
             f"# tiny_ci: end {project_id}",
         ]
     )
@@ -106,5 +107,5 @@ if __name__ == "__main__":
 
     for hook_name in ("post-commit", "post-merge"):
         hook_path = _git_path(repo_path, hook_name)
-        _write_hook(hook_path, project_id, trigger_script)
+        _write_hook(hook_path, project_id, repo_path, trigger_script)
         print(f"[tiny_ci] Synced {hook_name}: {hook_path}")

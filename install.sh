@@ -21,6 +21,7 @@ echo "[tiny_ci] Installing..."
 mkdir -p "$SCRIPT_DIR/projects"
 mkdir -p "$SCRIPT_DIR/serve"
 mkdir -p "$SCRIPT_DIR/logs"
+mkdir -p "$SCRIPT_DIR/workspaces"
 
 # --- Make scripts executable ---
 chmod +x "$SCRIPT_DIR/scripts/build.sh"
@@ -133,12 +134,44 @@ fi
 for PROJECT_FILE in "$SCRIPT_DIR"/projects/*.json; do
     [ -f "$PROJECT_FILE" ] || continue
 
+    python3 - "$PROJECT_FILE" <<'PYEOF'
+import json
+import subprocess
+import sys
+
+project_file = sys.argv[1]
+with open(project_file) as f:
+    project = json.load(f)
+
+changed = False
+source_repo = project.get('sourceRepoPath') or project.get('repoPath', '')
+if source_repo and project.get('sourceRepoPath') != source_repo:
+    project['sourceRepoPath'] = source_repo
+    changed = True
+
+if source_repo and not project.get('branch'):
+    try:
+        branch = subprocess.check_output(
+            ['git', '-C', source_repo, 'rev-parse', '--abbrev-ref', 'HEAD'],
+            text=True,
+        ).strip()
+    except Exception:
+        branch = ''
+    if branch and branch != 'HEAD':
+        project['branch'] = branch
+        changed = True
+
+if changed:
+    with open(project_file, 'w') as f:
+        json.dump(project, f, ensure_ascii=False, indent=2)
+PYEOF
+
     PROJECT_ID="$(python3 -c "import json; d=json.load(open('$PROJECT_FILE')); print(d['id'])")"
     PROJECT_NAME="$(python3 -c "import json; d=json.load(open('$PROJECT_FILE')); print(d['name'])")"
-    PROJECT_REPO="$(python3 -c "import json; d=json.load(open('$PROJECT_FILE')); print(d.get('repoPath', ''))")"
+    PROJECT_REPO="$(python3 -c "import json; d=json.load(open('$PROJECT_FILE')); print(d.get('sourceRepoPath') or d.get('repoPath', ''))")"
 
     if [ -z "$PROJECT_REPO" ] || [ ! -d "$PROJECT_REPO" ]; then
-        echo "[tiny_ci] Skipping hook sync for ${PROJECT_ID}: missing repoPath"
+        echo "[tiny_ci] Skipping hook sync for ${PROJECT_ID}: missing sourceRepoPath"
         continue
     fi
 

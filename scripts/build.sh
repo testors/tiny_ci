@@ -15,12 +15,31 @@ if [ ! -f "$PROJECT_FILE" ]; then
 fi
 
 # --- Read project config ---
-PROJECT_NAME="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d['name'])")"
-BUILD_CMD="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d['buildCommand'])")"
-BUILD_DIR="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d.get('buildWorkingDir', '.'))")"
-ARTIFACT_PATH="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d['artifactPath'])")"
-ARTIFACT_NAME="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d.get('artifactName') or d['apkName'])")"
-PROJECT_REPO="$(python3 -c "import json,sys; d=json.load(open('$PROJECT_FILE')); print(d.get('repoPath', ''))")"
+eval "$(
+    python3 - "$SERVE_APP_DIR" "$PROJECT_FILE" <<'PYEOF'
+import shlex
+import sys
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+
+from project_paths import load_project
+
+project = load_project(Path(sys.argv[2]), Path(sys.argv[1]))
+values = {
+    "PROJECT_NAME": project["name"],
+    "BUILD_CMD": project["buildCommand"],
+    "BUILD_DIR": project.get("buildWorkingDir", "."),
+    "ARTIFACT_PATH": project["artifactPath"],
+    "ARTIFACT_NAME": project.get("artifactName") or project["apkName"],
+    "SOURCE_REPO": project.get("sourceRepoPath", ""),
+    "WORKSPACE_REPO": project.get("workspaceRepoPath", ""),
+    "BRANCH_PIN": project.get("branch", ""),
+}
+for key, value in values.items():
+    print(f"{key}={shlex.quote(str(value))}")
+PYEOF
+)"
 
 SERVE_DIR="$SERVE_APP_DIR/serve/${PROJECT_ID}"
 LOG_DIR="$SERVE_APP_DIR/logs/${PROJECT_ID}"
@@ -30,7 +49,7 @@ PROJECTS_JSON="$SERVE_APP_DIR/serve/projects.json"
 PID_FILE="/tmp/tiny_ci-${PROJECT_ID}.pid"
 BUILD_TIMEOUT=300  # 5 minutes
 
-mkdir -p "$SERVE_DIR" "$LOG_DIR"
+mkdir -p "$SERVE_DIR" "$LOG_DIR" "$SERVE_APP_DIR/workspaces"
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 LOG_FILE="$LOG_DIR/build-${TIMESTAMP}.log"
@@ -57,30 +76,44 @@ if [ -f "$PID_FILE" ]; then
 fi
 echo $$ > "$PID_FILE"
 
-# --- Gather git info from repo ---
-REPO_ROOT="$PROJECT_REPO"
-if [ -z "$REPO_ROOT" ]; then
-    # Try to infer from buildWorkingDir by searching for .git
-    CANDIDATE="$BUILD_DIR"
-    while [ "$CANDIDATE" != "/" ] && [ ! -d "$CANDIDATE/.git" ]; do
-        CANDIDATE="$(dirname "$CANDIDATE")"
-    done
-    if [ -d "$CANDIDATE/.git" ]; then
-        REPO_ROOT="$CANDIDATE"
-    fi
-fi
+COMMIT_HASH="unknown"
+COMMIT_FULL=""
+BRANCH="${BRANCH_PIN:-unknown}"
+COMMIT_MSG=""
 
-if [ -n "$REPO_ROOT" ] && [ -d "$REPO_ROOT/.git" ]; then
-    COMMIT_HASH="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-    COMMIT_FULL="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo '')"
-    BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')"
-    COMMIT_MSG="$(git -C "$REPO_ROOT" log -1 --pretty=%s 2>/dev/null || echo '')"
-else
-    COMMIT_HASH="unknown"
-    COMMIT_FULL=""
-    BRANCH="unknown"
-    COMMIT_MSG=""
-fi
+prepare_workspace() {
+    if [ -z "$SOURCE_REPO" ] || [ ! -d "$SOURCE_REPO/.git" ]; then
+        echo "[tiny_ci] ERROR: invalid source repo: ${SOURCE_REPO}" >&2
+        return 1
+    fi
+    if [ -z "$BRANCH_PIN" ]; then
+        echo "[tiny_ci] ERROR: no branch configured for ${PROJECT_ID}" >&2
+        return 1
+    fi
+
+    if [ -d "$WORKSPACE_REPO" ] && [ ! -d "$WORKSPACE_REPO/.git" ]; then
+        rm -rf "$WORKSPACE_REPO"
+    fi
+
+    if [ ! -d "$WORKSPACE_REPO/.git" ]; then
+        git clone --quiet "$SOURCE_REPO" "$WORKSPACE_REPO"
+    fi
+
+    if git -C "$WORKSPACE_REPO" remote get-url origin >/dev/null 2>&1; then
+        git -C "$WORKSPACE_REPO" remote set-url origin "$SOURCE_REPO"
+    else
+        git -C "$WORKSPACE_REPO" remote add origin "$SOURCE_REPO"
+    fi
+
+    git -C "$WORKSPACE_REPO" fetch --prune origin "+refs/heads/${BRANCH_PIN}:refs/remotes/origin/${BRANCH_PIN}"
+    git -C "$WORKSPACE_REPO" checkout --force -B "$BRANCH_PIN" "origin/$BRANCH_PIN"
+    git -C "$WORKSPACE_REPO" reset --hard "origin/$BRANCH_PIN"
+    git -C "$WORKSPACE_REPO" clean -fdx
+
+    if [ -f "$WORKSPACE_REPO/.gitmodules" ]; then
+        git -C "$WORKSPACE_REPO" submodule update --init --recursive
+    fi
+}
 
 # --- Write status helper ---
 write_status() {
@@ -144,6 +177,32 @@ if not found:
 
 with open(projects_file, 'w') as f:
     json.dump(projects, f, ensure_ascii=False, indent=2)
+PYEOF
+}
+
+append_history() {
+    local status="$1"
+    local now
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    python3 - <<PYEOF > "$HISTORY_FILE"
+import json
+
+entry = {
+    'status': '$status',
+    'commit': '$COMMIT_HASH',
+    'branch': '$BRANCH',
+    'message': $(printf '%s' "$COMMIT_MSG" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read().strip()))'),
+    'timestamp': '$now',
+}
+try:
+    with open('$HISTORY_FILE') as f:
+        history = json.load(f)
+except Exception:
+    history = []
+history.insert(0, entry)
+history = history[:20]
+print(json.dumps(history, ensure_ascii=False, indent=2))
 PYEOF
 }
 
@@ -222,7 +281,7 @@ handle_flutter_cache() {
     fi
 }
 
-# --- Pre-build: strip quarantine and clean caches ---
+# --- Pre-build: strip quarantine ---
 # Android SDK + Gradle quarantine applies to any Gradle or Flutter build
 if echo "$BUILD_CMD" | grep -qiE 'gradle|flutter'; then
     handle_android_quarantine
@@ -231,6 +290,39 @@ fi
 # Flutter-specific steps
 if echo "$BUILD_CMD" | grep -qi flutter; then
     handle_flutter_quarantine
+fi
+
+BUILD_LOG_SERVE="$SERVE_DIR/build.log"
+> "$BUILD_LOG_SERVE"
+
+{
+    echo "=== tiny_ci Workspace Sync ==="
+    echo "Project:   $PROJECT_NAME ($PROJECT_ID)"
+    echo "Source:    $SOURCE_REPO"
+    echo "Workspace: $WORKSPACE_REPO"
+    echo "Pinned:    $BRANCH_PIN"
+    echo "Time:      $(date)"
+    echo "=============================="
+    echo ""
+} >> "$BUILD_LOG_SERVE"
+
+if ! prepare_workspace >> "$BUILD_LOG_SERVE" 2>&1; then
+    cp "$BUILD_LOG_SERVE" "$LOG_FILE"
+    ERROR_MSG=$(tail -20 "$BUILD_LOG_SERVE" | tr '\n' '\x0a' | cut -c1-500)
+    write_status "failed" "$ERROR_MSG"
+    update_projects_json "failed"
+    echo "[tiny_ci] Build FAILED during workspace sync - check $LOG_FILE"
+    append_history "failed"
+    rm -f "$PID_FILE"
+    exit 1
+fi
+
+COMMIT_HASH="$(git -C "$WORKSPACE_REPO" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+COMMIT_FULL="$(git -C "$WORKSPACE_REPO" rev-parse HEAD 2>/dev/null || echo '')"
+BRANCH="$(git -C "$WORKSPACE_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$BRANCH_PIN")"
+COMMIT_MSG="$(git -C "$WORKSPACE_REPO" log -1 --pretty=%s 2>/dev/null || echo '')"
+
+if echo "$BUILD_CMD" | grep -qi flutter; then
     handle_flutter_cache
 fi
 
@@ -241,9 +333,6 @@ echo "[tiny_ci] Building $PROJECT_NAME (${BRANCH}@${COMMIT_HASH})..."
 # --- Build ---
 # Write directly to serve/<id>/build.log so it's live-accessible via HTTP during build.
 # Archived to logs/<id>/build-<timestamp>.log after completion.
-BUILD_LOG_SERVE="$SERVE_DIR/build.log"
-> "$BUILD_LOG_SERVE"  # clear previous log
-
 BUILD_EXIT=0
 {
     echo "=== tiny_ci Build ==="
@@ -253,6 +342,8 @@ BUILD_EXIT=0
     echo "Commit:  $COMMIT_HASH"
     echo "Command: $BUILD_CMD"
     echo "WorkDir: $BUILD_DIR"
+    echo "Source:  $SOURCE_REPO"
+    echo "Mirror:  $WORKSPACE_REPO"
     echo "========================"
     echo ""
 
@@ -301,25 +392,7 @@ else
 fi
 
 # --- Append to build history (keep last 20) ---
-HISTORY_ENTRY=$(python3 -c "
-import json, sys
-entry = {
-    'status': '$BUILD_RESULT',
-    'commit': '$COMMIT_HASH',
-    'branch': '$BRANCH',
-    'message': sys.stdin.read().strip(),
-    'timestamp': '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
-}
-try:
-    with open('$HISTORY_FILE') as f:
-        history = json.load(f)
-except:
-    history = []
-history.insert(0, entry)
-history = history[:20]
-print(json.dumps(history, ensure_ascii=False, indent=2))
-" <<< "$COMMIT_MSG")
-echo "$HISTORY_ENTRY" > "$HISTORY_FILE"
+append_history "$BUILD_RESULT"
 
 # --- Cleanup old logs (keep 10 most recent) ---
 ls -1t "$LOG_DIR"/build-*.log 2>/dev/null | tail -n +11 | xargs rm -f 2>/dev/null || true

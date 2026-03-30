@@ -44,9 +44,18 @@ cd /path/to/my-app
 완료. 이후 `git commit` 하면 자동 빌드 → `http://localhost:<PORT>` 에서 확인.
 
 > `install.sh` 는 이미 등록된 프로젝트들의 git hook도 최신 방식으로 다시 동기화한다.
+> 또한 기존 `projects/*.json` 에 `sourceRepoPath` / `branch` 가 없으면 현재 설정을 기준으로 자동 보정한다.
 
 > **참고**: `register.sh`는 실행 시점의 tiny_ci 경로를 git hook에 기록합니다.
 > tiny_ci를 다른 경로로 이동한 경우 각 프로젝트에서 `register.sh`를 다시 실행하세요.
+
+## 빌드 방식
+
+- tiny_ci는 개발 중인 워킹카피를 직접 빌드하지 않는다.
+- 등록된 각 프로젝트마다 `tiny_ci/workspaces/<project-id>/` 에 전용 clone/workspace를 두고 여기서 빌드한다.
+- 프로젝트 JSON의 `branch` 에 지정된 브랜치만 fetch/checkout 해서 빌드한다.
+- git hook도 pinned branch와 현재 커밋 브랜치가 다르면 자동 빌드를 건너뛴다.
+- 반면 `watchArtifacts` 는 개발용 원본 저장소의 로컬 빌드 산출물을 감시한다.
 
 ---
 
@@ -58,6 +67,7 @@ cd /path/to/my-app
 {
   "id": "my-app",
   "name": "My App",
+  "branch": "main",
   "buildCommand": "flutter build apk --release",
   "buildWorkingDir": "platforms/flutter",
   "artifactPath": "platforms/flutter/build/app/outputs/flutter-apk/app-release.apk",
@@ -69,11 +79,14 @@ cd /path/to/my-app
 |------|:----:|------|
 | `id` | ✓ | 프로젝트 식별자 (영문 소문자, 하이픈) |
 | `name` | ✓ | 표시 이름 |
+| `branch` | 권장 | tiny_ci가 빌드할 고정 브랜치 (`main` 권장) |
 | `buildCommand` | ✓ | 빌드 명령어 (쉘에서 그대로 실행됨) |
-| `buildWorkingDir` | ✓ | 빌드 실행 디렉토리 (상대경로 가능) |
-| `artifactPath` | ✓ | 빌드 결과물 경로 (상대경로 가능) |
+| `buildWorkingDir` | ✓ | 빌드 실행 디렉토리 (저장소 루트 기준 상대경로 권장) |
+| `artifactPath` | ✓ | 빌드 결과물 경로 (저장소 루트 기준 상대경로 권장) |
 | `artifactName` | ✓ | 서빙될 파일명 |
 | `watchArtifacts` | — | 로컬 빌드 감지 대상 목록 (아래 참고) |
+
+`branch` 를 생략하면 `register.sh` 실행 시점의 현재 브랜치가 기본값으로 저장된다. 다만 실수로 feature branch를 서빙하지 않으려면 `.tiny_ci.json` 에 명시하는 편이 안전하다.
 
 ### 2. 등록
 
@@ -81,6 +94,8 @@ cd /path/to/my-app
 cd /path/to/my-app
 /path/to/tiny_ci/scripts/register.sh
 ```
+
+등록되면 tiny_ci는 프로젝트의 `.tiny_ci.json` 을 `projects/<id>.json` 으로 복사하면서, 머신 로컬 정보인 `sourceRepoPath` 를 추가한다.
 
 ---
 
@@ -91,6 +106,7 @@ cd /path/to/my-app
 ```json
 {
   "id": "my-android-app",
+  "branch": "main",
   "artifactName": "MyApp-debug.apk",
   ...
   "watchArtifacts": [
@@ -111,7 +127,7 @@ cd /path/to/my-app
 | 필드 | 설명 |
 |------|------|
 | `label` | 버튼 표시 이름 (Debug / Release 등) |
-| `path` | 저장소 내 아티팩트 경로 (상대경로 가능) |
+| `path` | 원본 저장소 내 아티팩트 경로 (상대경로 가능) |
 | `file` | serve 디렉토리에 저장될 파일명 |
 
 **표시 규칙**
@@ -122,7 +138,7 @@ cd /path/to/my-app
 | `{label}` `Latest` | `file`이 `artifactName`과 다른 경우 파일이 존재하면 항상 | 최신 빌드면 `Latest` |
 | `{label}` `Latest` | `file`이 `artifactName`과 같은 경우 (tiny_ci도 빌드) | 로컬이 더 최신일 때만 |
 
-등록 후 `/api/scan/{id}` 호출 시 저장소 파일과 마지막 tiny_ci 빌드를 비교해 자동 감지·복사한다.
+등록 후 `/api/scan/{id}` 호출 시 원본 저장소 파일과 마지막 tiny_ci 빌드를 비교해 자동 감지·복사한다.
 
 ---
 
@@ -134,6 +150,7 @@ cd /path/to/my-app
 {
   "id": "my-android",
   "name": "My Android App",
+  "branch": "main",
   "buildCommand": "./gradlew assembleDebug",
   "buildWorkingDir": ".",
   "artifactPath": "app/build/outputs/apk/debug/app-debug.apk",
@@ -155,6 +172,7 @@ cd /path/to/my-app
 {
   "id": "my-flutter",
   "name": "My Flutter App",
+  "branch": "main",
   "buildCommand": "flutter build apk --release",
   "buildWorkingDir": ".",
   "artifactPath": "build/app/outputs/flutter-apk/app-release.apk",
@@ -168,6 +186,7 @@ cd /path/to/my-app
 {
   "id": "my-ios",
   "name": "My iOS App",
+  "branch": "main",
   "buildCommand": "fastlane gym --scheme MyApp --output_directory build",
   "buildWorkingDir": ".",
   "artifactPath": "build/MyApp.ipa",
@@ -187,6 +206,8 @@ tiny_ci/
 ├── server.py           # HTTP 서버 (정적 파일 + REST API)
 ├── projects/           # 등록된 프로젝트 설정 (register.sh가 자동 생성)
 │   └── my-app.json
+├── workspaces/         # 프로젝트별 전용 clone/workspace
+│   └── my-app/
 ├── serve/              # HTTP 서빙 루트 (기본 port 8888)
 │   ├── index.html      # 웹 UI
 │   ├── projects.json   # 전체 프로젝트 목록 (자동 갱신)
@@ -207,7 +228,7 @@ tiny_ci/
 
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
-| `GET` | `/api/scan/{id}` | 저장소 로컬 빌드 감지·복사, `artifacts.json` 갱신 |
+| `GET` | `/api/scan/{id}` | 원본 저장소 로컬 빌드 감지·복사, `artifacts.json` 갱신 |
 | `POST` | `/api/build/{id}` | 빌드 수동 트리거 (build.sh 백그라운드 실행) |
 
 ---

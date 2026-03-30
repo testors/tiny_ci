@@ -2,8 +2,8 @@
 """tiny_ci HTTP server
 - Serves static files from serve/
 - POST /api/build/<project-id>  → triggers build.sh in background
-- GET  /api/scan/<project-id>   → check repo for build artifacts, return metadata
-- GET  /<project-id>/<file>     → serve artifact (lazy copy from repo on first download)
+- GET  /api/scan/<project-id>   → check source repo for build artifacts, return metadata
+- GET  /<project-id>/<file>     → serve artifact (lazy copy from source repo on first download)
 """
 
 import http.server
@@ -18,6 +18,8 @@ from http import HTTPStatus
 from datetime import datetime, timezone
 from pathlib import Path
 
+from project_paths import load_project
+
 SERVE_APP_DIR = Path(__file__).parent
 SERVE_DIR     = SERVE_APP_DIR / "serve"
 BUILD_SCRIPT  = SERVE_APP_DIR / "scripts" / "build.sh"
@@ -28,8 +30,7 @@ def _load_project(project_id):
     project_file = SERVE_APP_DIR / "projects" / f"{project_id}.json"
     if not project_file.exists():
         return None, None
-    with open(project_file) as f:
-        config = json.load(f)
+    config = load_project(project_file, SERVE_APP_DIR)
     return config, config.get("watchArtifacts", [])
 
 
@@ -51,7 +52,7 @@ def _build_mtime(project_id):
 
 
 def scan_artifacts(project_id):
-    """Check repo build outputs — metadata only, no file copying.
+    """Check source-repo build outputs — metadata only, no file copying.
     Returns None if project not found, [] if no watchArtifacts configured.
     """
     config, watch_artifacts = _load_project(project_id)
@@ -89,7 +90,7 @@ def scan_artifacts(project_id):
 
 
 def _lazy_copy_artifact(project_id, filename):
-    """Copy artifact from repo source to serve dir on demand.
+    """Copy artifact from source repo to serve dir on demand.
     Returns the serve path if successful, None otherwise.
     """
     config, watch_artifacts = _load_project(project_id)
@@ -278,6 +279,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
             self.send_header("Accept-Ranges", "bytes")
             self.send_header("Last-Modified", self.date_time_string(fs.st_mtime))
+            self.send_header("Cache-Control", "no-store, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             self.end_headers()
             return f
         except Exception:

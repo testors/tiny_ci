@@ -19,29 +19,18 @@ fi
 PROJECT_ID="$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print(d['id'])")"
 PROJECT_NAME="$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print(d['name'])")"
 ARTIFACT_NAME="$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print(d.get('artifactName') or d['apkName'])")"
+CURRENT_BRANCH="$(git -C "$PROJECT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
 
 echo "[tiny_ci] Registering project: $PROJECT_NAME ($PROJECT_ID)"
 
 # --- Copy config to tiny_ci/projects/ ---
-# Merge repoPath into the config copy so build.sh can find the git repo
 python3 - <<PYEOF
 import json
 with open('$CONFIG_FILE') as f:
     config = json.load(f)
-config['repoPath'] = '$PROJECT_ROOT'
-# Resolve relative buildWorkingDir to absolute
-if 'buildWorkingDir' in config and not config['buildWorkingDir'].startswith('/'):
-    import os
-    config['buildWorkingDir'] = os.path.join('$PROJECT_ROOT', config['buildWorkingDir'])
-# Resolve relative artifactPath to absolute
-if 'artifactPath' in config and not config['artifactPath'].startswith('/'):
-    import os
-    config['artifactPath'] = os.path.join('$PROJECT_ROOT', config['artifactPath'])
-# Resolve relative paths in watchArtifacts
-for a in config.get('watchArtifacts', []):
-    if 'path' in a and not a['path'].startswith('/'):
-        import os
-        a['path'] = os.path.join('$PROJECT_ROOT', a['path'])
+config['sourceRepoPath'] = '$PROJECT_ROOT'
+if not config.get('branch'):
+    config['branch'] = '$CURRENT_BRANCH'
 with open('$SERVE_APP_DIR/projects/${PROJECT_ID}.json', 'w') as f:
     json.dump(config, f, ensure_ascii=False, indent=2)
 print('[tiny_ci] Config saved to projects/${PROJECT_ID}.json')
@@ -59,7 +48,7 @@ if [ ! -f "$STATUS_FILE" ]; then
   "status": "unknown",
   "commit": "",
   "commitFull": "",
-  "branch": "",
+  "branch": "$(python3 -c "import json; d=json.load(open('$SERVE_APP_DIR/projects/${PROJECT_ID}.json')); print(d.get('branch', ''))")",
   "message": "No build yet. Make a commit to trigger a build.",
   "timestamp": "",
   "artifactSize": 0
