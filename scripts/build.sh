@@ -36,6 +36,20 @@ values = {
     "WORKSPACE_REPO": project.get("workspaceRepoPath", ""),
     "BRANCH_PIN": project.get("branch", ""),
 }
+play_upload = project.get("playUpload") or {}
+values.update({
+    "PLAY_UPLOAD_ENABLED": str(bool(play_upload.get("enabled"))).lower(),
+    "PLAY_PACKAGE_NAME": play_upload.get("packageName", ""),
+    "PLAY_TRACK": play_upload.get("track", "internal"),
+    "PLAY_ARTIFACT_PATH": play_upload.get("artifactPath", project["artifactPath"]),
+    "PLAY_ARTIFACT_TYPE": play_upload.get("artifactType", "auto"),
+    "PLAY_SERVICE_ACCOUNT_JSON": play_upload.get("serviceAccountJson", ""),
+    "PLAY_RELEASE_STATUS": play_upload.get("releaseStatus", "completed"),
+    "PLAY_CHANGES_IN_REVIEW_BEHAVIOR": play_upload.get(
+        "changesInReviewBehavior",
+        "ERROR_IF_IN_REVIEW",
+    ),
+})
 for key, value in values.items():
     print(f"{key}={shlex.quote(str(value))}")
 PYEOF
@@ -47,7 +61,7 @@ STATUS_FILE="$SERVE_DIR/build-status.json"
 HISTORY_FILE="$SERVE_DIR/build-history.json"
 PROJECTS_JSON="$SERVE_APP_DIR/serve/projects.json"
 PID_FILE="/tmp/tiny_ci-${PROJECT_ID}.pid"
-BUILD_TIMEOUT=300  # 5 minutes
+BUILD_TIMEOUT=1200  # 20 minutes
 
 mkdir -p "$SERVE_DIR" "$LOG_DIR" "$SERVE_APP_DIR/workspaces"
 
@@ -120,11 +134,16 @@ write_status() {
     local status="$1"
     local extra="${2:-}"
     local now
+    local error_field=""
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
     local artifact_size=""
     if [ "$status" = "ready" ] && [ -f "$SERVE_DIR/$ARTIFACT_NAME" ]; then
         artifact_size=$(stat -f%z "$SERVE_DIR/$ARTIFACT_NAME" 2>/dev/null || stat -c%s "$SERVE_DIR/$ARTIFACT_NAME" 2>/dev/null || echo "0")
+    fi
+
+    if [ -n "$extra" ]; then
+        error_field="$(printf '%s' "$extra" | python3 -c 'import sys,json; print(",\n  \"error\": " + json.dumps(sys.stdin.read()))')"
     fi
 
     cat > "$STATUS_FILE" <<EOJSON
@@ -135,8 +154,7 @@ write_status() {
   "branch": "${BRANCH}",
   "message": $(printf '%s' "$COMMIT_MSG" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),
   "timestamp": "${now}",
-  "artifactSize": ${artifact_size:-0}${extra:+,
-  "error": $(printf '%s' "$extra" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}
+  "artifactSize": ${artifact_size:-0}${error_field}
 }
 EOJSON
 }
@@ -159,10 +177,13 @@ except:
 
 # Find and update or add entry
 found = False
+play_upload_enabled = '$PLAY_UPLOAD_ENABLED' == 'true'
+
 for p in projects:
     if p.get('id') == '$PROJECT_ID':
         p['status'] = '$status'
         p['lastBuildTime'] = '$now'
+        p['playUploadEnabled'] = play_upload_enabled
         found = True
         break
 
@@ -172,7 +193,8 @@ if not found:
         'name': '$PROJECT_NAME',
         'artifactFile': '$ARTIFACT_NAME',
         'status': '$status',
-        'lastBuildTime': '$now'
+        'lastBuildTime': '$now',
+        'playUploadEnabled': play_upload_enabled,
     })
 
 with open(projects_file, 'w') as f:
@@ -281,6 +303,47 @@ handle_flutter_cache() {
     fi
 }
 
+upload_to_play_if_configured() {
+    if [ "$PLAY_UPLOAD_ENABLED" != "true" ]; then
+        return 0
+    fi
+
+    if [ "${TINY_CI_RELEASE:-}" != "1" ]; then
+        echo "[tiny_ci] Skipping Play Console upload (regular build; trigger via /api/release/<project>)"
+        return 0
+    fi
+
+    if [ -z "$PLAY_PACKAGE_NAME" ]; then
+        echo "[tiny_ci] ERROR: playUpload.packageName is required when playUpload.enabled=true"
+        return 1
+    fi
+
+    local credential_args=()
+    if [ -n "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+        credential_args=(--credentials "$PLAY_SERVICE_ACCOUNT_JSON")
+    fi
+
+    local release_name
+    local release_notes
+    release_name="${PROJECT_NAME} ${COMMIT_HASH}"
+    release_notes="Automated tiny_ci build ${COMMIT_HASH}"
+    if [ -n "$COMMIT_MSG" ]; then
+        release_notes="${release_notes}: ${COMMIT_MSG}"
+    fi
+
+    echo "[tiny_ci] Uploading ${PLAY_ARTIFACT_PATH:-$ARTIFACT_PATH} to Google Play track '${PLAY_TRACK}'..."
+    python3 "$SERVE_APP_DIR/scripts/upload_google_play_internal.py" \
+        --package-name "$PLAY_PACKAGE_NAME" \
+        --artifact "${PLAY_ARTIFACT_PATH:-$ARTIFACT_PATH}" \
+        --artifact-type "${PLAY_ARTIFACT_TYPE:-auto}" \
+        --track "${PLAY_TRACK:-internal}" \
+        --release-status "${PLAY_RELEASE_STATUS:-completed}" \
+        --release-name "$release_name" \
+        --release-notes "$release_notes" \
+        --changes-in-review-behavior "${PLAY_CHANGES_IN_REVIEW_BEHAVIOR:-ERROR_IF_IN_REVIEW}" \
+        "${credential_args[@]}"
+}
+
 # --- Pre-build: strip quarantine ---
 # Android SDK + Gradle quarantine applies to any Gradle or Flutter build
 if echo "$BUILD_CMD" | grep -qiE 'gradle|flutter'; then
@@ -349,6 +412,8 @@ BUILD_EXIT=0
 
     export PATH="/opt/homebrew/opt/openjdk@17/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
     export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
+    export TINY_CI_BUILD_NUMBER="${TINY_CI_BUILD_NUMBER:-$(date +%s)}"
+    echo "Build #: $TINY_CI_BUILD_NUMBER"
 
     cd "$BUILD_DIR"
     eval "$BUILD_CMD" 2>&1 || BUILD_EXIT=$?
@@ -379,10 +444,18 @@ if [ $BUILD_EXIT -eq 0 ] && [ -f "$ARTIFACT_PATH" ]; then
     # Atomic copy: temp file + mv
     cp "$ARTIFACT_PATH" "$SERVE_DIR/${ARTIFACT_NAME}.tmp"
     mv "$SERVE_DIR/${ARTIFACT_NAME}.tmp" "$SERVE_DIR/$ARTIFACT_NAME"
-    write_status "ready"
-    update_projects_json "ready"
-    echo "[tiny_ci] Build SUCCESS - $ARTIFACT_NAME ready"
-    BUILD_RESULT="ready"
+    if upload_to_play_if_configured >> "$BUILD_LOG_SERVE" 2>&1; then
+        write_status "ready"
+        update_projects_json "ready"
+        echo "[tiny_ci] Build SUCCESS - $ARTIFACT_NAME ready"
+        BUILD_RESULT="ready"
+    else
+        ERROR_MSG=$(tail -20 "$BUILD_LOG_SERVE" | tr '\n' '\x0a' | cut -c1-500)
+        write_status "failed" "$ERROR_MSG"
+        update_projects_json "failed"
+        echo "[tiny_ci] Build FAILED during Google Play upload - check $LOG_FILE"
+        BUILD_RESULT="failed"
+    fi
 else
     ERROR_MSG=$(tail -20 "$BUILD_LOG_SERVE" | tr '\n' '\x0a' | cut -c1-500)
     write_status "failed" "$ERROR_MSG"
@@ -390,6 +463,9 @@ else
     echo "[tiny_ci] Build FAILED - check $LOG_FILE"
     BUILD_RESULT="failed"
 fi
+
+# Re-archive after post-build hooks, such as Google Play upload.
+cp "$BUILD_LOG_SERVE" "$LOG_FILE"
 
 # --- Append to build history (keep last 20) ---
 append_history "$BUILD_RESULT"

@@ -197,8 +197,8 @@
     letter-spacing: 0.04em;
   }
 
-  /* Build button */
-  #btn-build {
+  /* Build / Release buttons */
+  #btn-build, #btn-release {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -212,8 +212,12 @@
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
   }
-  #btn-build:hover:not(:disabled) { background: #21262d; border-color: #8b949e; }
-  #btn-build:disabled { opacity: 0.4; cursor: not-allowed; }
+  #btn-build:hover:not(:disabled),
+  #btn-release:hover:not(:disabled) { background: #21262d; border-color: #8b949e; }
+  #btn-build:disabled,
+  #btn-release:disabled { opacity: 0.4; cursor: not-allowed; }
+  #btn-release { border-color: #1f6feb; color: #79c0ff; }
+  #btn-release:hover:not(:disabled) { background: #0d2657; border-color: #58a6ff; }
 
   /* Info grid */
   .info-grid {
@@ -630,6 +634,7 @@
       </div>
       <div id="status-badge" class="status-badge badge-unknown"></div>
       <button id="btn-build" onclick="triggerBuild()">▶ Build</button>
+      <button id="btn-release" onclick="triggerRelease()" style="display:none">⬆ Release</button>
     </div>
     <div id="info-section" class="info-grid"></div>
     <div id="downloads-section"></div>
@@ -745,6 +750,12 @@ function renderDetail() {
   const buildBtn = document.getElementById('btn-build');
   buildBtn.disabled = (status === 'building');
   buildBtn.innerHTML = status === 'building' ? '<span class="spinner-sm"></span> Building…' : '▶ Build';
+
+  // Release button: only shown if playUpload is enabled for this project
+  const releaseBtn = document.getElementById('btn-release');
+  releaseBtn.style.display = proj.playUploadEnabled ? '' : 'none';
+  releaseBtn.disabled = (status === 'building');
+  releaseBtn.innerHTML = status === 'building' ? '<span class="spinner-sm"></span> Building…' : '⬆ Release';
 
   // Detail subtitle: branch@commit
   if (data && data.branch && data.commit) {
@@ -1046,6 +1057,32 @@ async function triggerBuild() {
     alert('Build trigger failed: ' + e.message);
     btn.disabled = false;
     btn.innerHTML = '▶ Build';
+  }
+}
+
+async function triggerRelease() {
+  if (!selectedId) return;
+  if (!confirm(`Build ${selectedId} and upload to Play Console (Internal testing)?`)) return;
+  const buildBtn = document.getElementById('btn-build');
+  const releaseBtn = document.getElementById('btn-release');
+  buildBtn.disabled = true;
+  releaseBtn.disabled = true;
+  releaseBtn.innerHTML = '<span class="spinner-sm"></span> Releasing…';
+  try {
+    const res = await fetch(`/api/release/${selectedId}`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('Release trigger failed: ' + (err.error || res.status));
+      buildBtn.disabled = false;
+      releaseBtn.disabled = false;
+      releaseBtn.innerHTML = '⬆ Release';
+    }
+    // Success: status polling will pick up the "building" state shortly
+  } catch (e) {
+    alert('Release trigger failed: ' + e.message);
+    buildBtn.disabled = false;
+    releaseBtn.disabled = false;
+    releaseBtn.innerHTML = '⬆ Release';
   }
 }
 

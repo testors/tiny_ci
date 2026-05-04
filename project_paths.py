@@ -63,6 +63,24 @@ def load_project(project_file: Path, serve_app_dir: Path) -> dict:
     resolved["artifactPath"] = str(
         _path_from_workspace(config["artifactPath"], source_repo, workspace_repo)
     )
+    if isinstance(config.get("playUpload"), dict):
+        resolved_play_upload = dict(config["playUpload"])
+        # configFile lets multiple projects (and other tooling) share one
+        # source of truth for packageName, track, serviceAccountJson.
+        # Fields explicitly set in the project config win.
+        config_file = resolved_play_upload.pop("configFile", None)
+        if config_file:
+            with Path(config_file).expanduser().open() as f:
+                shared = json.load(f)
+            for key, value in shared.items():
+                resolved_play_upload.setdefault(key, value)
+        if resolved_play_upload.get("artifactPath"):
+            resolved_play_upload["artifactPath"] = str(
+                _path_from_workspace(
+                    resolved_play_upload["artifactPath"], source_repo, workspace_repo
+                )
+            )
+        resolved["playUpload"] = resolved_play_upload
 
     resolved_watch = []
     for artifact in config.get("watchArtifacts", []):

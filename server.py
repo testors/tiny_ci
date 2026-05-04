@@ -303,9 +303,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             remaining -= len(chunk)
 
     def do_POST(self):
-        # POST /api/build/<project-id>
+        # POST /api/build/<project-id>      → build only
+        # POST /api/release/<project-id>    → build + Play Console upload
         parts = self.path.strip("/").split("/")
-        if len(parts) == 3 and parts[0] == "api" and parts[1] == "build":
+        if len(parts) == 3 and parts[0] == "api" and parts[1] in ("build", "release"):
             project_id = parts[2]
             project_file = SERVE_APP_DIR / "projects" / f"{project_id}.json"
 
@@ -313,13 +314,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self._json(404, {"error": f"project '{project_id}' not found"})
                 return
 
+            is_release = parts[1] == "release"
+            env = os.environ.copy()
+            if is_release:
+                env["TINY_CI_RELEASE"] = "1"
+
             subprocess.Popen(
                 [str(BUILD_SCRIPT), project_id],
+                env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-            self._json(202, {"status": "triggered", "project": project_id})
+            self._json(202, {"status": "triggered", "project": project_id, "release": is_release})
         else:
             self._json(404, {"error": "not found"})
 

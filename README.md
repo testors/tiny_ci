@@ -180,6 +180,58 @@ cd /path/to/my-app
 }
 ```
 
+### Google Play Internal Testing 업로드
+
+`playUpload` 설정이 enabled여도 **자동 업로드는 안 된다** — git push로 들어오는 일반 빌드는 artifact만 만들고 멈춘다. Play Console로 올리려면 **수동 트리거**가 필요하다:
+
+- **Web UI**: 프로젝트 detail 패널의 `⬆ Release` 버튼 (`playUpload.enabled: true`인 프로젝트에만 표시)
+- **HTTP**: `POST /api/release/<project-id>` (`/api/build/...`와 비슷하지만 빌드 성공 시 Play 업로드까지 진행)
+
+내부적으로는 `TINY_CI_RELEASE=1` 환경 변수가 build.sh에 전달되고, `upload_to_play_if_configured()`가 그 플래그가 있을 때만 동작한다.
+
+설정 자체는 다음과 같다.
+
+```json
+{
+  "id": "my-flutter",
+  "buildCommand": "flutter build apk --release --build-number \"$TINY_CI_BUILD_NUMBER\" && flutter build appbundle --release --build-number \"$TINY_CI_BUILD_NUMBER\"",
+  "artifactPath": "build/app/outputs/flutter-apk/app-release.apk",
+  "artifactName": "MyApp.apk",
+  "playUpload": {
+    "enabled": true,
+    "packageName": "com.example.myapp",
+    "track": "internal",
+    "artifactPath": "build/app/outputs/bundle/release/app-release.aab",
+    "artifactType": "aab",
+    "serviceAccountJson": "/Users/testors/.config/tiny_ci/google-play/myapp-service-account.json",
+    "releaseStatus": "completed",
+    "changesInReviewBehavior": "ERROR_IF_IN_REVIEW"
+  }
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `enabled` | `true`면 빌드 성공 후 업로드를 실행 |
+| `packageName` | Android `applicationId` / Play Console 패키지명 |
+| `track` | Internal Testing은 `internal` |
+| `artifactPath` | Play에 올릴 파일. 생략하면 tiny_ci의 `artifactPath`를 사용 |
+| `artifactType` | `auto`, `apk`, `aab` 중 하나. 신규 Play 앱은 보통 AAB 사용 |
+| `serviceAccountJson` | Google Play Developer API 권한이 있는 서비스 계정 JSON |
+| `releaseStatus` | 일반적으로 `completed` |
+| `changesInReviewBehavior` | 기본값은 기존 심사 중 변경을 건드리지 않는 `ERROR_IF_IN_REVIEW` |
+
+`TINY_CI_BUILD_NUMBER`는 tiny_ci가 빌드마다 Unix timestamp로 자동 제공한다. Flutter의 `--build-number`에 넣어 Play versionCode 중복 업로드 실패를 피한다.
+
+최초 설정은 Play Console에서 한 번 해야 한다.
+
+1. Play Console에 앱을 생성하고 패키지명을 확정한다.
+2. Testing > Internal testing에서 tester email list 또는 Google Group을 등록한다.
+3. Google Cloud에서 Google Play Developer API를 enable한다.
+4. 서비스 계정을 만들고 Play Console Users and permissions에 초대한다. 최소한 testing track release를 만들 수 있는 권한이 필요하다.
+5. 서비스 계정 JSON을 `serviceAccountJson` 경로에 저장한다. 이 파일은 git에 커밋하지 않는다.
+6. Android release 빌드는 debug key가 아니라 Play 업로드용 release/upload key로 서명되도록 앱 프로젝트에서 설정한다.
+
 ### iOS (fastlane)
 
 ```json
