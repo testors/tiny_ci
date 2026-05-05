@@ -95,7 +95,7 @@ COMMIT_FULL=""
 BRANCH="${BRANCH_PIN:-unknown}"
 COMMIT_MSG=""
 
-prepare_workspace() {
+prepare_workspace_fetch() {
     if [ -z "$SOURCE_REPO" ] || [ ! -d "$SOURCE_REPO/.git" ]; then
         echo "[tiny_ci] ERROR: invalid source repo: ${SOURCE_REPO}" >&2
         return 1
@@ -120,6 +120,9 @@ prepare_workspace() {
     fi
 
     git -C "$WORKSPACE_REPO" fetch --prune origin "+refs/heads/${BRANCH_PIN}:refs/remotes/origin/${BRANCH_PIN}"
+}
+
+prepare_workspace_apply() {
     git -C "$WORKSPACE_REPO" checkout --force -B "$BRANCH_PIN" "origin/$BRANCH_PIN"
     git -C "$WORKSPACE_REPO" reset --hard "origin/$BRANCH_PIN"
     git -C "$WORKSPACE_REPO" clean -fdx
@@ -369,7 +372,7 @@ BUILD_LOG_SERVE="$SERVE_DIR/build.log"
     echo ""
 } >> "$BUILD_LOG_SERVE"
 
-if ! prepare_workspace >> "$BUILD_LOG_SERVE" 2>&1; then
+workspace_sync_failed() {
     cp "$BUILD_LOG_SERVE" "$LOG_FILE"
     ERROR_MSG=$(tail -20 "$BUILD_LOG_SERVE" | tr '\n' '\x0a' | cut -c1-500)
     write_status "failed" "$ERROR_MSG"
@@ -378,6 +381,34 @@ if ! prepare_workspace >> "$BUILD_LOG_SERVE" 2>&1; then
     append_history "failed"
     rm -f "$PID_FILE"
     exit 1
+}
+
+if ! prepare_workspace_fetch >> "$BUILD_LOG_SERVE" 2>&1; then
+    workspace_sync_failed
+fi
+
+ORIGIN_FULL="$(git -C "$WORKSPACE_REPO" rev-parse "origin/$BRANCH_PIN" 2>/dev/null || echo '')"
+
+# --- Decide whether to reuse the previous build ---
+# When /api/release fires, the auto-build for the same commit usually already
+# produced both the APK and the AAB. Skip the rebuild if origin HEAD matches
+# the last successful build's commit AND the Play artifact still exists.
+BUILD_CACHE_HIT=false
+if [ "${TINY_CI_RELEASE:-}" = "1" ] && [ "$PLAY_UPLOAD_ENABLED" = "true" ] && [ -n "$ORIGIN_FULL" ] && [ -f "$STATUS_FILE" ]; then
+    LAST_FULL=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("commitFull",""))' "$STATUS_FILE" 2>/dev/null || echo "")
+    LAST_STATUS=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("status",""))' "$STATUS_FILE" 2>/dev/null || echo "")
+    WORKSPACE_HEAD="$(git -C "$WORKSPACE_REPO" rev-parse HEAD 2>/dev/null || echo '')"
+    if [ "$LAST_STATUS" = "ready" ] && [ -n "$LAST_FULL" ] && \
+       [ "$LAST_FULL" = "$ORIGIN_FULL" ] && [ "$WORKSPACE_HEAD" = "$ORIGIN_FULL" ] && \
+       [ -f "$PLAY_ARTIFACT_PATH" ] && [ -f "$ARTIFACT_PATH" ]; then
+        BUILD_CACHE_HIT=true
+    fi
+fi
+
+if [ "$BUILD_CACHE_HIT" = "false" ]; then
+    if ! prepare_workspace_apply >> "$BUILD_LOG_SERVE" 2>&1; then
+        workspace_sync_failed
+    fi
 fi
 
 COMMIT_HASH="$(git -C "$WORKSPACE_REPO" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
@@ -385,57 +416,72 @@ COMMIT_FULL="$(git -C "$WORKSPACE_REPO" rev-parse HEAD 2>/dev/null || echo '')"
 BRANCH="$(git -C "$WORKSPACE_REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "$BRANCH_PIN")"
 COMMIT_MSG="$(git -C "$WORKSPACE_REPO" log -1 --pretty=%s 2>/dev/null || echo '')"
 
-if echo "$BUILD_CMD" | grep -qi flutter; then
+if [ "$BUILD_CACHE_HIT" = "false" ] && echo "$BUILD_CMD" | grep -qi flutter; then
     handle_flutter_cache
 fi
 
 write_status "building"
 update_projects_json "building"
-echo "[tiny_ci] Building $PROJECT_NAME (${BRANCH}@${COMMIT_HASH})..."
+
+if [ "$BUILD_CACHE_HIT" = "true" ]; then
+    {
+        echo ""
+        echo "[tiny_ci] Cache hit: reusing artifacts from previous build at ${COMMIT_HASH}"
+        echo "  APK: $ARTIFACT_PATH"
+        echo "  AAB: $PLAY_ARTIFACT_PATH"
+        echo "  (skipping git reset/clean and BUILD_CMD)"
+        echo ""
+    } >> "$BUILD_LOG_SERVE"
+    echo "[tiny_ci] Reusing build of $PROJECT_NAME (${BRANCH}@${COMMIT_HASH}) for release"
+else
+    echo "[tiny_ci] Building $PROJECT_NAME (${BRANCH}@${COMMIT_HASH})..."
+fi
 
 # --- Build ---
 # Write directly to serve/<id>/build.log so it's live-accessible via HTTP during build.
 # Archived to logs/<id>/build-<timestamp>.log after completion.
 BUILD_EXIT=0
-{
-    echo "=== tiny_ci Build ==="
-    echo "Project: $PROJECT_NAME ($PROJECT_ID)"
-    echo "Time:    $(date)"
-    echo "Branch:  $BRANCH"
-    echo "Commit:  $COMMIT_HASH"
-    echo "Command: $BUILD_CMD"
-    echo "WorkDir: $BUILD_DIR"
-    echo "Source:  $SOURCE_REPO"
-    echo "Mirror:  $WORKSPACE_REPO"
-    echo "========================"
-    echo ""
+if [ "$BUILD_CACHE_HIT" = "false" ]; then
+    {
+        echo "=== tiny_ci Build ==="
+        echo "Project: $PROJECT_NAME ($PROJECT_ID)"
+        echo "Time:    $(date)"
+        echo "Branch:  $BRANCH"
+        echo "Commit:  $COMMIT_HASH"
+        echo "Command: $BUILD_CMD"
+        echo "WorkDir: $BUILD_DIR"
+        echo "Source:  $SOURCE_REPO"
+        echo "Mirror:  $WORKSPACE_REPO"
+        echo "========================"
+        echo ""
 
-    export PATH="/opt/homebrew/opt/openjdk@17/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
-    export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
-    export TINY_CI_BUILD_NUMBER="${TINY_CI_BUILD_NUMBER:-$(date +%s)}"
-    echo "Build #: $TINY_CI_BUILD_NUMBER"
+        export PATH="/opt/homebrew/opt/openjdk@17/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
+        export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
+        export TINY_CI_BUILD_NUMBER="${TINY_CI_BUILD_NUMBER:-$(date +%s)}"
+        echo "Build #: $TINY_CI_BUILD_NUMBER"
 
-    cd "$BUILD_DIR"
-    eval "$BUILD_CMD" 2>&1 || BUILD_EXIT=$?
+        cd "$BUILD_DIR"
+        eval "$BUILD_CMD" 2>&1 || BUILD_EXIT=$?
 
-    echo ""
-    echo "=== Build finished (exit=$BUILD_EXIT) ==="
-} >> "$BUILD_LOG_SERVE" 2>&1 &
-BUILD_PID=$!
+        echo ""
+        echo "=== Build finished (exit=$BUILD_EXIT) ==="
+    } >> "$BUILD_LOG_SERVE" 2>&1 &
+    BUILD_PID=$!
 
-# --- Watchdog: kill build if it exceeds timeout ---
-(
-    sleep "$BUILD_TIMEOUT"
-    if kill -0 "$BUILD_PID" 2>/dev/null; then
-        echo "[tiny_ci] Build timed out after ${BUILD_TIMEOUT}s, killing..." >> "$BUILD_LOG_SERVE"
-        kill_tree "$BUILD_PID"
-    fi
-) &
-WATCHDOG_PID=$!
+    # --- Watchdog: kill build if it exceeds timeout ---
+    (
+        sleep "$BUILD_TIMEOUT"
+        if kill -0 "$BUILD_PID" 2>/dev/null; then
+            echo "[tiny_ci] Build timed out after ${BUILD_TIMEOUT}s, killing..." >> "$BUILD_LOG_SERVE"
+            kill_tree "$BUILD_PID"
+        fi
+    ) &
+    WATCHDOG_PID=$!
 
-wait "$BUILD_PID" 2>/dev/null || BUILD_EXIT=$?
-kill "$WATCHDOG_PID" 2>/dev/null || true
-wait "$WATCHDOG_PID" 2>/dev/null || true
+    wait "$BUILD_PID" 2>/dev/null || BUILD_EXIT=$?
+    kill "$WATCHDOG_PID" 2>/dev/null || true
+    wait "$WATCHDOG_PID" 2>/dev/null || true
+fi
 
 # Archive full log with timestamp
 cp "$BUILD_LOG_SERVE" "$LOG_FILE"
